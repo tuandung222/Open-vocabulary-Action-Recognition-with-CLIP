@@ -1,0 +1,61 @@
+site_name: CLIP HAR Documentation
+site_description: Documentation for Human Action Recognition using CLIP
+site_author: tuandunghcmut
+repo_url: https://github.com/tuandunghcmut/CLIP_HAR_PROJECT
+repo_name: CLIP_HAR_PROJECT
+
+theme:
+  name: material
+  palette:
+    primary: deep purple
+    accent: amber
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/tuandunghcmut
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - pymdownx.tabbed
+  - pymdownx.tasklist
+  - admonition
+  - footnotes
+  - pymdownx.details
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          selection:
+            docstring_style: google
+          rendering:
+            show_source: true
+  - git-revision-date-localized
+
+nav:
+  - Home: index.md
+  - Architecture:
+    - Overview: architecture.md
+    - API Reference: api_reference.md
+  - Development:
+    - Development Guide: development_guide.md
+    - Docker Setup: docker_guide.md
+  - MLOps:
+    - Experiment Tracking: experiment_tracking.md
+  - Roadmap: ../ROADMAP.md 
