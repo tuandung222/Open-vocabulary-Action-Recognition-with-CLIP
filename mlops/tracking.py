@@ -49,6 +49,10 @@ class ExperimentTracker:
         """Log metrics."""
         raise NotImplementedError
 
+    def log(self, key: str, value: Any, step: Optional[int] = None) -> None:
+        """Log a single key-value pair."""
+        self.log_metrics({key: value}, step=step)
+
     def log_artifact(
         self, local_path: str, artifact_path: Optional[str] = None
     ) -> None:
@@ -382,6 +386,18 @@ class WandbTracker(ExperimentTracker):
         if self.run:
             wandb.log(metrics, step=step)
 
+    def log(self, key: str, value: Any, step: Optional[int] = None) -> None:
+        """
+        Log a single key-value pair to wandb.
+        
+        Args:
+            key: Metric name
+            value: Metric value
+            step: Optional step number for the metric
+        """
+        if self.run:
+            wandb.log({key: value}, step=step)
+
     def log_artifact(
         self, local_path: str, artifact_path: Optional[str] = None
     ) -> None:
@@ -555,6 +571,23 @@ class MultiTracker(ExperimentTracker):
             except Exception as e:
                 logger.warning(
                     f"Failed to log metrics with tracker {type(tracker).__name__}: {e}"
+                )
+
+    def log(self, key: str, value: Any, step: Optional[int] = None) -> None:
+        """
+        Log a single key-value pair to all trackers.
+        
+        Args:
+            key: Metric name
+            value: Metric value
+            step: Optional step number for the metric
+        """
+        for tracker in self.trackers:
+            try:
+                tracker.log(key, value, step)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to log key-value with tracker {type(tracker).__name__}: {e}"
                 )
 
     def log_artifact(

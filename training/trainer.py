@@ -613,10 +613,12 @@ class DistributedTrainer:
         # Clean up memory
         torch.cuda.empty_cache()
 
-    def log(self, name: str, value: Union[torch.Tensor, float, int]):
+    def log(self, name: str, value: Union[torch.Tensor, float, int], step: Optional[int] = None):
         """Log a value to the logger."""
         if self._logger is not None and is_main_process(self.distributed_config):
-            self._logger.log({name: value, "epoch": self.cur_epoch}, step=self.cur_step)
+            # Use the provided step or use self.cur_step as the default
+            step_value = step if step is not None else self.cur_step
+            self._logger.log(name, value, step=step_value)
 
     def get_training_results(self) -> Dict[str, Any]:
         """Get the results of training."""
