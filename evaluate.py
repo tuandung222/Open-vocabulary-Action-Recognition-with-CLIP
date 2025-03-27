@@ -16,13 +16,13 @@ from torch.utils.data import DataLoader
 from transformers import CLIPImageProcessor, CLIPTokenizerFast
 
 # Import project modules
-from CLIP_HAR_PROJECT.configs.default import get_config
-from CLIP_HAR_PROJECT.data.preprocessing import (
+from configs.default import get_config
+from data.preprocessing import (
     collate_fn,
     get_class_mappings,
     prepare_har_dataset,
 )
-from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
+from models.clip_model import CLIPLabelRetriever
 
 
 def parse_args():

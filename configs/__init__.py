@@ -1,4 +1,4 @@
-from CLIP_HAR_PROJECT.configs.default import (
+from .default import (
     DataConfig,
     LoggingConfig,
     ModelConfig,
@@ -11,4 +11,4 @@ from CLIP_HAR_PROJECT.configs.default import (
     get_single_gpu_config,
 )
 
-from CLIP_HAR_PROJECT.configs.custom_config import get_quick_test_config
+from .custom_config import get_quick_test_config

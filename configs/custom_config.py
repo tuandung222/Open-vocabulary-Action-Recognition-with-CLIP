@@ -1,4 +1,4 @@
-from CLIP_HAR_PROJECT.configs.default import ProjectConfig, ModelConfig, DataConfig, TrainingConfig, LoggingConfig
+from .default import ProjectConfig, ModelConfig, DataConfig, TrainingConfig, LoggingConfig
 from dataclasses import field
 
 def get_quick_test_config() -> ProjectConfig:

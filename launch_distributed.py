@@ -116,7 +116,7 @@ def build_torchrun_command(args) -> List[str]:
         args.master_addr,
         "--master_port",
         args.master_port,
-        "CLIP_HAR_PROJECT/train.py",
+        "train.py",
         "--distributed_mode",
         args.distributed_mode,
     ]

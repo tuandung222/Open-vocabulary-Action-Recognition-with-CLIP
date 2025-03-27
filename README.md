@@ -83,16 +83,18 @@ CLIP_HAR_PROJECT/
 1. Clone the repository:
    ```bash
    git clone https://github.com/tuandung222/Open-vocabulary-Action-Recognition-with-CLIP.git
-   cd CLIP_HAR_PROJECT
+   cd Open-vocabulary-Action-Recognition-with-CLIP
    ```
 
 2. Install the required packages:
    ```bash
    pip install -r requirements.txt
+   pip install -e .
    ```
 
 3. Set up DVC:
    ```bash
+    # Intialize DVC if not already initialized
    dvc init
    dvc add data/raw  # Add raw data to version control
    ```

@@ -1,4 +1,4 @@
-from CLIP_HAR_PROJECT.training.distributed import (
+from .distributed import (
     DistributedConfig,
     DistributedMode,
     cleanup_distributed,
@@ -7,7 +7,7 @@ from CLIP_HAR_PROJECT.training.distributed import (
     setup_distributed_environment,
     wrap_model_for_distributed,
 )
-from CLIP_HAR_PROJECT.training.trainer import (
+from .trainer import (
     DistributedTrainer,
     TrainingConfig,
     get_trainer,

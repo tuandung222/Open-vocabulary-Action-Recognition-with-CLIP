@@ -9,9 +9,18 @@ import torch.nn as nn
 from torch.distributed.fsdp import BackwardPrefetch, CPUOffload, FullStateDictConfig
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import MixedPrecision, ShardingStrategy, StateDictType
-from torch.distributed.fsdp.wrap import default_auto_wrap_policy, enable_wrap, wrap
+from torch.distributed.fsdp.wrap import enable_wrap, wrap
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+# For PyTorch compatibility
+try:
+    from torch.distributed.fsdp.wrap import default_auto_wrap_policy
+except ImportError:
+    # Define a simple replacement if the import fails
+    def default_auto_wrap_policy(
+        module, recurse, unwrapped_params, module_is_root=False, min_num_params=1e6, **kwargs
+    ):
+        return unwrapped_params >= min_num_params
 
 class DistributedMode(Enum):
     """Enum for distributed training modes."""

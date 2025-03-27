@@ -5,14 +5,14 @@ This module contains tools for evaluating models, computing metrics,
 and visualizing evaluation results.
 """
 
-from CLIP_HAR_PROJECT.evaluation.evaluator import ClassificationEvaluator, Evaluator
-from CLIP_HAR_PROJECT.evaluation.metrics import (
+from .evaluator import ClassificationEvaluator
+from .metrics import (
     compute_accuracy_per_class,
     compute_classification_report,
     compute_confusion_matrix,
     compute_metrics,
 )
-from CLIP_HAR_PROJECT.evaluation.visualization import (
+from .visualization import (
     plot_accuracy_per_class,
     plot_confusion_matrix,
     plot_misclassifications,
@@ -28,6 +28,6 @@ __all__ = [
     "plot_accuracy_per_class",
     "plot_misclassifications",
     "visualize_attention",
-    "Evaluator",
+    # "Evaluator",
     "ClassificationEvaluator",
 ]

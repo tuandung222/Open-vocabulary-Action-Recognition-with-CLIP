@@ -13,12 +13,12 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from CLIP_HAR_PROJECT.evaluation.metrics import (
+from .metrics import (
     compute_classification_report,
     compute_confusion_matrix,
     compute_metrics,
 )
-from CLIP_HAR_PROJECT.evaluation.visualization import (
+from .visualization import (
     plot_accuracy_per_class,
     plot_confusion_matrix,
 )

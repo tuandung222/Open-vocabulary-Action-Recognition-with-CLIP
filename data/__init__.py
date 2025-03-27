@@ -1,4 +1,4 @@
-from CLIP_HAR_PROJECT.data.preprocessing import (
+from .preprocessing import (
     collate_fn,
     create_class_distribution_visualizations,
     get_class_mappings,

@@ -1,4 +1,4 @@
-from CLIP_HAR_PROJECT.deployment.export import (
+from .export import (
     benchmark_model,
     export_to_onnx,
     export_to_tensorrt,

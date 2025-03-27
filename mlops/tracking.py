@@ -347,6 +347,7 @@ class WandbTracker(ExperimentTracker):
             name=name,
             config=self.config,
             reinit=True,
+            # anonymous=True,
         )
 
         return self.run

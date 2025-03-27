@@ -11,18 +11,18 @@ import wandb
 from transformers import CLIPImageProcessor, CLIPTokenizerFast
 
 # Import project modules
-from CLIP_HAR_PROJECT.configs.default import get_config
-from CLIP_HAR_PROJECT.data.preprocessing import (
+from configs.default import get_config
+from data.preprocessing import (
     get_class_mappings,
     prepare_har_dataset,
     visualize_samples,
 )
-from CLIP_HAR_PROJECT.models.clip_model import (
+from models.clip_model import (
     CLIPLabelRetriever,
     freeze_clip_parameters,
     print_trainable_parameters,
 )
-from CLIP_HAR_PROJECT.training.trainer import DistributedTrainer, TrainingConfig
+from training.trainer import DistributedTrainer, TrainingConfig
 
 
 def parse_args():
@@ -225,7 +225,7 @@ def main():
     )
 
     # Create the training pipeline
-    from CLIP_HAR_PROJECT.pipeline.training_pipeline import TrainingPipeline
+    from pipeline.training_pipeline import TrainingPipeline
 
     pipeline = TrainingPipeline(
         distributed_mode=args.distributed_mode,

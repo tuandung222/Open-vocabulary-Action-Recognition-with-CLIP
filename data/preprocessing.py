@@ -195,7 +195,8 @@ def transform_dataset(
 
 
 def prepare_har_dataset(
-    tokenizer, image_processor, val_ratio=0.15, test_ratio=0.25, seed=42
+    tokenizer, image_processor, val_ratio=0.15, test_ratio=0.25, seed=42,
+    transforms=None, use_mix_augmentation=False, mix_config=None
 ):
     """
     Prepare the HAR dataset for training with CLIP.
@@ -206,6 +207,9 @@ def prepare_har_dataset(
         val_ratio: The ratio of validation set
         test_ratio: The ratio of test set
         seed: Random seed for reproducibility
+        transforms: Optional data transforms to apply
+        use_mix_augmentation: Whether to use mix augmentation 
+        mix_config: Configuration for mix augmentation
 
     Returns:
         Dictionary of transformed datasets
@@ -258,7 +262,7 @@ def collate_fn(items):
     }
 
 
-def visualize_samples(dataset, id2string, rows=3, cols=5):
+def visualize_samples(dataset, id2string, rows=3, cols=5, save_dir=None):
     """
     Visualize samples from the dataset.
 
@@ -267,16 +271,29 @@ def visualize_samples(dataset, id2string, rows=3, cols=5):
         id2string: Mapping from label IDs to label strings
         rows: Number of rows
         cols: Number of columns
+        save_dir: Directory to save the visualization (if None, just display)
     """
     import matplotlib.pyplot as plt
+    import os
 
     samples = dataset.shuffle().select(range(rows * cols))
     fig = plt.figure(figsize=(cols * 4, rows * 4))
 
     for i in range(rows * cols):
         img = samples[i]["image"]
-        label = samples[i]["labels"]  # ID
-        label_str = id2string[label]
+        
+        # Try to get the label, checking both 'labels' and 'label_id'
+        if "labels" in samples[i]:
+            label = samples[i]["labels"]
+        elif "label_id" in samples[i]:
+            label = samples[i]["label_id"]
+        else:
+            # If no label found, print available keys and use a placeholder
+            print(f"No label field found in sample {i}. Available keys: {samples[i].keys()}")
+            label = 0  # Use a placeholder
+            
+        # Use label to get string representation
+        label_str = id2string.get(label, f"Unknown ({label})")
 
         ax = fig.add_subplot(rows, cols, i + 1)
         ax.imshow(img)
@@ -284,47 +301,126 @@ def visualize_samples(dataset, id2string, rows=3, cols=5):
         ax.axis("off")
 
     plt.tight_layout()
-    plt.show()
+    
+    if save_dir:
+        # Create directory if it doesn't exist
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Save figure
+        save_path = os.path.join(save_dir, "sample_visualizations.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Saved visualization to {save_path}")
+    else:
+        # Just display
+        plt.show()
 
 
-def create_class_distribution_visualizations(dataset):
+def create_class_distribution_visualizations(dataset, id2string=None, save_dir=None):
     """
     Create visualizations for class distribution.
 
     Args:
-        dataset: The dataset
+        dataset: The dataset or DatasetDict (if DatasetDict, uses 'train' split)
+        id2string: Mapping from label IDs to label strings (if None, will be created)
+        save_dir: Directory to save the visualizations (if None, just return figures)
+    
+    Returns:
+        Tuple of figures (pie chart, bar chart)
     """
     import matplotlib.pyplot as plt
     import pandas as pd
     import plotly.express as px
+    import os
+    from datasets import DatasetDict
 
-    # Count classes
+    # If dataset is a DatasetDict, use the train split
+    if isinstance(dataset, DatasetDict):
+        if 'train' in dataset:
+            dataset = dataset['train']
+        else:
+            # Use the first dataset in the dict
+            dataset = list(dataset.values())[0]
+
+    # Count classes - but check for either 'labels' or 'label_id' column
     class_count = {}
-    for label in dataset["labels"]:
-        if label not in class_count:
-            class_count[label] = 0
-        class_count[label] += 1
+    
+    # Try to get a sample to determine the label format
+    try:
+        sample = dataset[0]  # Get a sample item to check available fields
+        print(f"Dataset sample features: {sample.keys()}")
+        
+        # Determine which column contains the labels
+        label_field = None
+        for field in ['labels', 'label_id', 'label']:
+            if field in sample:
+                label_field = field
+                break
+                
+        if not label_field:
+            print("Warning: Could not find label field in dataset. Available fields:", sample.keys())
+            # Try raw features access as fallback
+            if hasattr(dataset, 'features') and hasattr(dataset, 'column_names'):
+                print(f"Dataset features: {dataset.features}")
+                print(f"Dataset columns: {dataset.column_names}")
+            return None, None
+            
+        # Count classes
+        for item in dataset:
+            label = item[label_field]
+            if label not in class_count:
+                class_count[label] = 0
+            class_count[label] += 1
+            
+        print(f"Found {len(class_count)} classes using field '{label_field}'")
+            
+    except Exception as e:
+        print(f"Error processing dataset for visualization: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
 
     # Calculate class distribution
     class_dist = {k: v / len(dataset) for k, v in class_count.items()}
 
-    # Get class names
-    _, id2string, class_names = get_class_mappings(None)
+    # Get class names if not provided
+    if id2string is None:
+        try:
+            _, id2string, class_names = get_class_mappings(None)
+        except Exception as e:
+            print(f"Error getting class mappings: {e}")
+            # Simple fallback if mapping fails
+            id2string = {i: f"Class {i}" for i in class_count.keys()}
 
     # Create pie chart
-    fig = px.pie(
-        names=[id2string[id] for id in class_dist.keys()],
-        values=list(class_dist.values()),
-        width=600,
-    )
-    fig.update_layout({"title": {"text": "Class Distribution", "x": 0.5}})
+    try:
+        fig = px.pie(
+            names=[id2string[id] for id in class_dist.keys()],
+            values=list(class_dist.values()),
+            width=600,
+        )
+        fig.update_layout({"title": {"text": "Class Distribution", "x": 0.5}})
 
-    # Create bar chart
-    fig2 = px.bar(
-        x=[id2string[id] for id in class_dist.keys()],
-        y=list(class_dist.values()),
-        title="Class Frequency",
-    )
-    fig2.update_layout({"title": {"x": 0.1}})
+        # Create bar chart
+        fig2 = px.bar(
+            x=[id2string[id] for id in class_dist.keys()],
+            y=list(class_dist.values()),
+            title="Class Frequency",
+        )
+        fig2.update_layout({"title": {"x": 0.1}})
 
-    return fig, fig2
+        # Save figures if save_dir is provided
+        if save_dir:
+            # Create directory if it doesn't exist
+            os.makedirs(save_dir, exist_ok=True)
+            
+            # Save figures
+            fig.write_image(os.path.join(save_dir, "class_distribution_pie.png"))
+            fig2.write_image(os.path.join(save_dir, "class_distribution_bar.png"))
+            print(f"Saved class distribution visualizations to {save_dir}")
+
+        return fig, fig2
+    except Exception as e:
+        print(f"Error creating visualizations: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
