@@ -1,39 +1,46 @@
 stages:
-  prepare_data:
-    cmd: python -m CLIP_HAR_PROJECT.data.preprocessing --output_dir data/processed
+  download_dataset:
+    cmd: python scripts/download_dataset.py --dataset Bingsu/Human_Action_Recognition --output_dir data/har_dataset --version v1
     deps:
-      - CLIP_HAR_PROJECT/data/preprocessing.py
+      - scripts/download_dataset.py
     outs:
-      - data/processed
+      - data/har_dataset/v1:
+          persist: true
+
+  filter_dataset:
+    cmd: python scripts/download_dataset.py --dataset Bingsu/Human_Action_Recognition --output_dir data/har_dataset --version v2 --split train
+    deps:
+      - scripts/download_dataset.py
+    outs:
+      - data/har_dataset/v2:
+          persist: true
+    frozen: true  # Only run when explicitly requested
+
+  prepare_data:
+    cmd: python -c "from data.preprocessing import prepare_har_dataset; from transformers import CLIPTokenizerFast, CLIPImageProcessor; tokenizer = CLIPTokenizerFast.from_pretrained('openai/clip-vit-base-patch16'); image_processor = CLIPImageProcessor.from_pretrained('openai/clip-vit-base-patch16'); prepare_har_dataset(tokenizer, image_processor, val_ratio=0.15, test_ratio=0.25, seed=42)"
+    deps:
+      - data/har_dataset/v1
+    frozen: true  # Only run when explicitly requested
 
   train:
-    cmd: python -m CLIP_HAR_PROJECT.train
-      --config configs/training_config.yaml
-      --output_dir models/clip_har
+    cmd: python train.py --distributed_mode none --batch_size 128 --max_epochs 15 --lr 3e-6 --output_dir outputs/model_run
     deps:
-      - CLIP_HAR_PROJECT/train.py
-      - configs/training_config.yaml
-      - data/processed
+      - train.py
+      - data/har_dataset/v1
     outs:
-      - models/clip_har/model.pt
-    metrics:
-      - models/clip_har/metrics.json:
-          cache: false
+      - outputs/model_run:
+          persist: true
+    frozen: true  # Only run when explicitly requested
 
   evaluate:
-    cmd: python -m CLIP_HAR_PROJECT.evaluate
-      --model_path models/clip_har/model.pt
-      --output_dir evaluation_results
+    cmd: python evaluate.py --model_path outputs/model_run/best_model.pt --output_dir outputs/evaluation
     deps:
-      - CLIP_HAR_PROJECT/evaluate.py
-      - models/clip_har/model.pt
-      - data/processed
-    metrics:
-      - evaluation_results/metrics.json:
-          cache: false
+      - evaluate.py
+      - outputs/model_run
     outs:
-      - evaluation_results/confusion_matrix.png
-      - evaluation_results/class_report.csv
+      - outputs/evaluation:
+          persist: true
+    frozen: true  # Only run when explicitly requested
 
   export:
     cmd: python -m CLIP_HAR_PROJECT.deployment.export_clip_model
