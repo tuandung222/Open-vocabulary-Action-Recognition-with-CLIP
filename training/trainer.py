@@ -412,6 +412,22 @@ class DistributedTrainer:
 
         # Clean up memory
         torch.cuda.empty_cache()
+        
+        # Clear terminal to avoid cluttering with progress bars
+        if is_main_process(self.distributed_config):
+            # Try to clear the terminal using os-specific command
+            import os
+            if os.name == 'posix':  # For Unix/Linux/Mac
+                os.system('clear')
+            elif os.name == 'nt':   # For Windows
+                os.system('cls')
+            
+            # Print a summary of the last epoch
+            print(f"\n===== Epoch {self.cur_epoch} Summary =====")
+            if metrics_dict:
+                for key, value in metrics_dict.items():
+                    print(f"{key}: {value:.6f}")
+            print(f"====================================\n")
 
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
