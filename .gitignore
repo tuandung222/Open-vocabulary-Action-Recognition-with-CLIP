@@ -56,6 +56,7 @@ coverage.xml
 *.cover
 .hypothesis/
 pytest_cache/
+.pytest_cache/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -74,6 +75,7 @@ pytest_cache/
 *.pb
 *.pkl
 *.npy
+*.csv
 wandb/
 mlruns/
 lightning_logs/
@@ -81,6 +83,12 @@ outputs/
 checkpoints/
 runs/
 events.out.tfevents.*
+confusion_matrix.png
+visualizations/
+metrics_summary.txt
+classification_report.csv
+evaluation_metrics.txt
+evaluation/
 
 # DVC
 .dvc/tmp
@@ -99,9 +107,14 @@ events.out.tfevents.*
 # OS-specific
 .DS_Store
 Thumbs.db
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
 
 # Docker
 .docker/data
+.docker/
 
 # Logs
 logs/
@@ -111,3 +124,21 @@ logs/
 .env
 .env.*
 !.env.example
+
+# Temporary files
+*.swp
+*.swo
+*~
+tmp/
+.tmp/
+
+# Results and large files
+results/
+*.zip
+*.tar.gz
+*.mp4
+*.avi
+*.mov
+
+# Weights & Biases specific
+wandb/*/requirements.txt
