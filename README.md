@@ -16,19 +16,18 @@ This project implements an end-to-end solution for Human Action Recognition (HAR
 
 ## System Architecture
 
-The CLIP HAR project implements a comprehensive MLOps architecture with automation at its core, featuring interconnected components rather than a sequential pipeline:
+The CLIP HAR project implements a comprehensive MLOps architecture with automation at its core, featuring interconnected components focused on human action recognition.
 
-1. **Data Platform**: Handles dataset versioning, preprocessing, and automated validation
-2. **Training Platform**: Manages distributed training with DDP and FSDP, experiment tracking, and automated hyperparameter optimization
-3. **Inference Platform**: Handles model export, containerization, and serving infrastructure
-4. **Orchestration Layer**: Coordinates automation across all components, managing workflows and resource allocation
-5. **Monitoring & Feedback**: Provides automated monitoring, alerting, and continuous improvement through feedback loops
-6. **User Interface Layer**: Streamlit UI and REST API for interaction with the system
+The system integrates:
+- Data management with version control
+- CLIP-based model architecture 
+- Distributed training capabilities
+- Comprehensive evaluation metrics
+- Production-ready deployment options
+- Interactive user interfaces
 
-The system is designed around automation and bidirectional feedback loops rather than a linear flow. For detailed architecture diagrams, see:
-- [Architecture Overview](docs/architecture.md)
-- [Redesigned Architecture with Automation Focus](docs/architecture_redesign.md)
-- [Improved Diagram Options](docs/architecture_better_diagrams.md)
+For detailed architecture diagrams and component descriptions, see:
+- [System Architecture](docs/architecture.md)
 
 ## Project Structure
 
