@@ -248,10 +248,10 @@ tracker.push_to_hub(
 When running in Docker containers, experiment tracking is configured through environment variables:
 
 ```bash
-# Set in docker-compose.yml or when starting containers
+# Set in docker/docker-compose.yml or when starting containers
 docker run -e MLFLOW_TRACKING_URI=http://mlflow-server:5000 \
            -e WANDB_API_KEY=your-api-key \
            clip-har-train
 ```
 
-The `docker-compose.yml` file already includes appropriate volume mounts and environment variables for MLflow and wandb.
+The `docker/docker-compose.yml` file already includes appropriate volume mounts and environment variables for MLflow and wandb.

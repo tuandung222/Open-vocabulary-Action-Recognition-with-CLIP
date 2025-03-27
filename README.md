@@ -69,9 +69,11 @@ CLIP_HAR_PROJECT/
 ├── evaluate.py           # Evaluation script
 ├── launch_distributed.py # Distributed training launcher
 ├── train.py              # Training script
-├── docker-compose.yml    # Docker Compose configuration
-├── Dockerfile.train      # Training container Dockerfile
-├── Dockerfile.app        # App/Inference container Dockerfile
+├── docker/               # Docker configuration files
+│   ├── docker-compose.yml # Docker Compose configuration
+│   ├── Dockerfile.train  # Training container Dockerfile
+│   ├── Dockerfile.app    # App/Inference container Dockerfile
+│   └── Dockerfile        # Base Dockerfile
 ├── dvc.yaml              # DVC pipeline definition
 └── requirements.txt      # Project dependencies
 ```
@@ -243,13 +245,13 @@ The project provides Docker containers for training and inference:
 
 ```bash
 # Build containers
-docker-compose build
+docker-compose -f docker/docker-compose.yml build
 
 # Run training container
-docker-compose run clip-har-train
+docker-compose -f docker/docker-compose.yml run clip-har-train
 
 # Run app/inference container
-docker-compose up clip-har-app
+docker-compose -f docker/docker-compose.yml up clip-har-app
 ```
 
 For detailed Docker setup, see [docs/docker_guide.md](docs/docker_guide.md).

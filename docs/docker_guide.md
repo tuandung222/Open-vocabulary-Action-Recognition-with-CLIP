@@ -17,17 +17,25 @@ The project uses two main Docker containers:
 
 Additionally, a local Docker registry is included for storing Docker images.
 
+All Docker configuration files are organized in the `docker/` directory:
+
+- `docker/Dockerfile` - Base Dockerfile for development
+- `docker/Dockerfile.train` - Training container with PyTorch and GPU support
+- `docker/Dockerfile.app` - App/inference container with TensorRT support
+- `docker/docker-compose.yml` - Docker Compose configuration for all services
+- `docker/README.md` - Quick reference for Docker configuration
+
 ## Getting Started
 
 ### Building the Containers
 
 ```bash
 # Build both containers
-docker-compose build
+docker-compose -f docker/docker-compose.yml build
 
 # Build specific containers
-docker-compose build clip-har-train
-docker-compose build clip-har-app
+docker-compose -f docker/docker-compose.yml build clip-har-train
+docker-compose -f docker/docker-compose.yml build clip-har-app
 ```
 
 ### Running the Containers
@@ -36,13 +44,13 @@ docker-compose build clip-har-app
 
 ```bash
 # Run with default parameters
-docker-compose run clip-har-train
+docker-compose -f docker/docker-compose.yml run clip-har-train
 
 # Run with custom parameters
-docker-compose run clip-har-train train.py --distributed_mode=ddp --batch_size=32 --max_epochs=20
+docker-compose -f docker/docker-compose.yml run clip-har-train train.py --distributed_mode=ddp --batch_size=32 --max_epochs=20
 
 # Run automated training with DVC and HuggingFace Hub
-docker-compose run clip-har-train -m CLIP_HAR_PROJECT.mlops.automated_training \
+docker-compose -f docker/docker-compose.yml run clip-har-train -m CLIP_HAR_PROJECT.mlops.automated_training \
     --config configs/training_config.yaml \
     --output_dir outputs/auto_training \
     --dataset_version v1.2 \
@@ -54,7 +62,7 @@ docker-compose run clip-har-train -m CLIP_HAR_PROJECT.mlops.automated_training \
 
 ```bash
 # Run the combined app and inference service
-docker-compose up clip-har-app
+docker-compose -f docker/docker-compose.yml up clip-har-app
 
 # Access the services:
 # - Streamlit UI: http://localhost:8501
@@ -65,7 +73,7 @@ docker-compose up clip-har-app
 
 ```bash
 # Start the registry
-docker-compose up -d registry
+docker-compose -f docker/docker-compose.yml up -d registry
 
 # Tag and push to local registry
 docker tag clip-har-train:latest localhost:5000/clip-har-train:latest
@@ -121,7 +129,7 @@ The training container is configured to use GPUs with the NVIDIA Container Toolk
 
 ```bash
 # Use specific GPUs
-CUDA_VISIBLE_DEVICES=0,1 docker-compose run clip-har-train
+CUDA_VISIBLE_DEVICES=0,1 docker-compose -f docker/docker-compose.yml run clip-har-train
 ```
 
 ## Customizing the Containers
@@ -170,17 +178,17 @@ For production deployment, consider:
 ### Common Issues
 
 1. **GPU not available in container**: Ensure NVIDIA Container Toolkit is installed and configured
-2. **Port conflicts**: Change the exposed ports in the `docker-compose.yml` file
+2. **Port conflicts**: Change the exposed ports in the `docker/docker-compose.yml` file
 3. **File permission issues**: Check volume mount permissions
 
 ### Logs
 
 ```bash
 # View logs for app container
-docker-compose logs clip-har-app
+docker-compose -f docker/docker-compose.yml logs clip-har-app
 
 # View logs for training container
-docker-compose logs clip-har-train
+docker-compose -f docker/docker-compose.yml logs clip-har-train
 ```
 
 ## Best Practices
