@@ -100,14 +100,12 @@ def load_model_from_checkpoint(model_path, model_name, labels, prompt_template):
 
 def evaluate_model(model, test_dataset, batch_size=64, num_workers=4, device="cuda"):
     """Evaluate a model on the test set."""
-    # Create dataloader with timeout to prevent hanging
+    # Create dataloader
     test_dataloader = DataLoader(
         test_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
         collate_fn=collate_fn,
-        timeout=60,  # 60 second timeout
-        persistent_workers=True if num_workers > 0 else False,
     )
 
     # Move model to device
