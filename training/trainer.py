@@ -20,10 +20,10 @@ from tqdm import tqdm
 import evaluate
 
 # Import data utils
-from CLIP_HAR_PROJECT.data.preprocessing import collate_fn
+from data.preprocessing import collate_fn
 
 # Import distributed training utilities
-from CLIP_HAR_PROJECT.training.distributed import (
+from training.distributed import (
     DistributedConfig,
     DistributedMode,
     cleanup_distributed,
@@ -348,7 +348,7 @@ class DistributedTrainer:
                 # Forward pass with mixed precision
                 with torch.autocast(
                     device_type="cuda" if torch.cuda.is_available() else "cpu",
-                    dtype=torch.bfloat16
+                    dtype=torch.float16
                     if self.config.mixed_precision
                     else torch.float32,
                 ):

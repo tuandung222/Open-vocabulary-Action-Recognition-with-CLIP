@@ -15,35 +15,35 @@ import torch
 import torch.distributed as dist
 
 # Import project modules
-from CLIP_HAR_PROJECT.configs.default import get_config
-from CLIP_HAR_PROJECT.data.augmentation import HARDataAugmentation
-from CLIP_HAR_PROJECT.data.dataset import load_dataset, split_dataset
-from CLIP_HAR_PROJECT.data.preprocessing import (
+from configs.default import get_config
+from data.augmentation import HARDataAugmentation
+# from datasets import load_dataset
+from data.preprocessing import (
     create_class_distribution_visualizations,
     get_class_mappings,
     prepare_har_dataset,
     visualize_samples,
 )
-from CLIP_HAR_PROJECT.deployment.export import (
+from deployment.export import (
     benchmark_model,
     export_to_onnx,
     export_to_tensorrt,
     validate_exported_model,
 )
-from CLIP_HAR_PROJECT.evaluation.evaluator import ClassificationEvaluator, get_evaluator
+from evaluation.evaluator import ClassificationEvaluator, get_evaluator
 
 # Import evaluation modules
-from CLIP_HAR_PROJECT.evaluation.metrics import (
+from evaluation.metrics import (
     compute_classification_report,
     compute_confusion_matrix,
     compute_metrics,
 )
-from CLIP_HAR_PROJECT.evaluation.visualization import (
+from evaluation.visualization import (
     create_evaluation_report,
     plot_accuracy_per_class,
     plot_confusion_matrix,
 )
-from CLIP_HAR_PROJECT.mlops.tracking import (
+from mlops.tracking import (
     create_tracker,
     log_artifact,
     log_confusion_matrix,
@@ -52,25 +52,24 @@ from CLIP_HAR_PROJECT.mlops.tracking import (
     log_model_params,
     setup_mlflow,
 )
-from CLIP_HAR_PROJECT.models.clip_model import (
+from models.clip_model import (
     CLIPLabelRetriever,
     freeze_clip_parameters,
     get_labels_from_dataset,
     print_trainable_parameters,
 )
-from CLIP_HAR_PROJECT.models.model_factory import create_model
-from CLIP_HAR_PROJECT.training.distributed import (
+from training.distributed import (
     cleanup_distributed,
     setup_distributed_environment,
 )
-from CLIP_HAR_PROJECT.training.trainer import (
+from training.trainer import (
     DistributedTrainer,
     TrainingConfig,
     get_trainer,
 )
-from CLIP_HAR_PROJECT.utils.config import Config
-from CLIP_HAR_PROJECT.utils.distributed import get_rank, get_world_size, is_main_process
-from CLIP_HAR_PROJECT.utils.mlflow import (
+from utils.config import Config
+from utils.distributed import get_rank, get_world_size, is_main_process
+from utils.mlflow import (
     log_artifact,
     log_metrics,
     log_model,
@@ -270,17 +269,66 @@ class TrainingPipeline:
             logger.info(f"Class names: {self.class_names}")
             _, id2string, _ = get_class_mappings(None)
 
-            # Visualize samples
-            visualize_samples(
-                self.datasets["train"],
-                id2string,
-                save_dir=self.config.training.output_dir,
-            )
+            # Debug dataset structure
+            logger.info("Debugging dataset structure:")
+            try:
+                # Get information about the train dataset
+                train_sample = self.datasets["train"][0]
+                logger.info(f"Train dataset sample keys: {train_sample.keys()}")
+                
+                # Check actual features in the dataset
+                if hasattr(self.datasets["train"], "features"):
+                    logger.info(f"Train dataset features: {self.datasets['train'].features}")
+                if hasattr(self.datasets["train"], "column_names"):
+                    logger.info(f"Train dataset columns: {self.datasets['train'].column_names}")
+                    
+                # Try to print first few samples' labels
+                for i in range(min(3, len(self.datasets["train"]))):
+                    sample = self.datasets["train"][i]
+                    label_info = {}
+                    for key in ["labels", "label_id", "label"]:
+                        if key in sample:
+                            label_info[key] = sample[key]
+                    logger.info(f"Sample {i} labels: {label_info}")
+            except Exception as e:
+                logger.error(f"Error debugging dataset: {e}")
 
-            # Visualize class distribution
-            create_class_distribution_visualizations(
-                self.datasets, id2string, save_dir=self.config.training.output_dir
-            )
+            # Visualize samples
+            try:
+                visualize_samples(
+                    self.datasets["train"],
+                    id2string,
+                    save_dir=self.config.training.output_dir,
+                )
+            except Exception as e:
+                logger.error(f"Error visualizing samples: {e}")
+                import traceback
+                traceback.print_exc()
+
+            # Visualize class distribution with error handling
+            try:
+                # For visualization, access the raw dataset before transformation if possible
+                original_dataset = self.datasets["train"]
+                
+                # Add debugging information
+                if hasattr(original_dataset, '_data') and hasattr(original_dataset._data, '_info'):
+                    logger.info(f"Dataset info: {original_dataset._data._info}")
+                
+                # Try visualization with original dataset first
+                vis_results = create_class_distribution_visualizations(
+                    original_dataset, id2string, save_dir=self.config.training.output_dir
+                )
+                if vis_results is None or vis_results[0] is None:
+                    logger.warning("Class distribution visualization failed with train dataset - trying with DatasetDict")
+                    # Try with whole dataset dict as fallback
+                    vis_results = create_class_distribution_visualizations(
+                        self.datasets, id2string, save_dir=self.config.training.output_dir
+                    )
+                    if vis_results is None or vis_results[0] is None:
+                        logger.warning("Class distribution visualization failed with DatasetDict - skipping visualizations")
+            except Exception as e:
+                logger.warning(f"Error creating class distribution visualizations: {e}")
+                logger.warning("Continuing without visualizations")
 
         logger.info(f"Prepared {len(self.datasets['train'])} training samples")
         logger.info(f"Prepared {len(self.datasets['val'])} validation samples")
@@ -362,9 +410,8 @@ class TrainingPipeline:
             train_dataset=self.datasets["train"],
             val_dataset=self.datasets["val"],
             tokenizer=self.tokenizer,
-            distributed_rank=self.rank,
-            distributed_world_size=self.world_size,
             labels=self.class_names,
+            logger=self.tracker,
         )
 
         # Log model parameters if tracking enabled
@@ -660,11 +707,15 @@ class TrainingPipeline:
         """
         try:
             # Execute pipeline steps
+            print("prepare_data start")
             self.prepare_data()
+            print("prepare_data done")
             self.setup_model()
+            print("setup_model done")
             self.train()
+            print("train done")
             eval_metrics = self.evaluate()
-
+            print("evaluate done")
             # Export model if configured
             if hasattr(self.config, "export") and self.config.export.enabled:
                 self.export_model(formats=self.config.export.formats)
@@ -687,6 +738,24 @@ class TrainingPipeline:
                 self.tracker.end_run()
 
             raise
+
+    def cleanup(self):
+        """Cleanup resources used by the pipeline."""
+        # End tracking run if active
+        if hasattr(self, "tracker") and self.tracker:
+            try:
+                self.tracker.end_run()
+            except Exception as e:
+                logger.warning(f"Error ending tracker run: {e}")
+                
+        # Clean up any distributed environment
+        try:
+            if hasattr(self, "distributed_mode") and self.distributed_mode != "none":
+                cleanup_distributed()
+        except Exception as e:
+            logger.warning(f"Error cleaning up distributed environment: {e}")
+            
+        logger.info("Pipeline resources cleaned up")
 
 
 def parse_args():
