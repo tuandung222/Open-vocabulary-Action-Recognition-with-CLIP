@@ -197,7 +197,7 @@ flowchart TD
     train --> validate[Validation]
     validate --> earlyStop{Early Stopping}
     
-    earlyStop -->|Yes| end[End Training]
+    earlyStop -->|Yes| endTraining[End Training]
     earlyStop -->|No| train
     
     validate --> checkpoint[Checkpointing]
@@ -205,7 +205,7 @@ flowchart TD
     
     class config,mode,train,validate,checkpoint,bestModel primary
     class single,distributed,ddp,fsdp secondary
-    class earlyStop,end tertiary
+    class earlyStop,endTraining tertiary
 ```
 
 **Key Features:**
