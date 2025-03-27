@@ -29,16 +29,56 @@ The system integrates:
 For detailed architecture diagrams and component descriptions, see:
 - [System Architecture](docs/architecture.md)
 
+## Model Export and Deployment
+
+This project supports multiple export formats to optimize models for different deployment scenarios:
+
+```bash
+python -m CLIP_HAR_PROJECT.deployment.export_clip_model \
+    --model_path outputs/trained_model.pt \
+    --export_format onnx torchscript tensorrt \
+    --benchmark
+```
+
+### Supported Export Formats
+
+#### 1. ONNX
+The Open Neural Network Exchange format provides cross-platform compatibility:
+- Framework-independent model representation
+- Optimized inference with ONNX Runtime
+- Deployment on CPU, GPU, and specialized hardware
+
+#### 2. TorchScript
+PyTorch's serialization format for production deployment:
+- C++ runtime compatibility
+- Graph optimizations for faster inference
+- Better portability than native PyTorch models
+
+#### 3. TensorRT
+NVIDIA's high-performance inference optimizer:
+- Maximum GPU acceleration
+- Mixed precision support (FP32, FP16, INT8)
+- Kernel fusion and other advanced optimizations
+
+### Performance Comparison
+
+| Format      | Inference Time | FPS | Relative Speed | Use Case                |
+|-------------|----------------|-----|----------------|-------------------------|
+| PyTorch     | ~25-30ms       | ~35 | 1x             | Development, flexibility|
+| TorchScript | ~18-22ms       | ~50 | ~1.4x          | Production CPU/GPU      |
+| ONNX        | ~15-20ms       | ~60 | ~1.7x          | Cross-platform deploy   |
+| TensorRT    | ~5-8ms         | ~150| ~4-5x          | Maximum GPU performance |
+
 ## TensorRT Integration
 
-To achieve maximum inference performance, I've integrated NVIDIA TensorRT into the project. TensorRT is a high-performance deep learning inference optimizer and runtime that significantly accelerates model inference on NVIDIA GPUs.
+For applications requiring maximum inference speed, my TensorRT integration provides substantial performance benefits.
 
-### Key TensorRT Features in This Project
+### Key TensorRT Features
 
 - **GPU-Optimized Inference**: Up to 5x faster inference compared to standard PyTorch models
-- **Multiple Precision Support**: FP32, FP16, and INT8 quantization options for optimal speed/accuracy tradeoffs
-- **Dynamic Batch Processing**: Configurable batch sizes for both real-time and batch processing scenarios
-- **Seamless Integration**: Works with the same API as other model formats (PyTorch, ONNX)
+- **Multiple Precision Support**: FP32, FP16, and INT8 quantization options
+- **Dynamic Batch Processing**: Configurable batch sizes for both real-time and batch processing
+- **Seamless API Integration**: Uses the same inference API as other model formats
 
 ### How to Use TensorRT
 
@@ -71,228 +111,6 @@ The provided Docker container has all necessary TensorRT dependencies pre-instal
 
 ```bash
 docker-compose -f docker/docker-compose.yml up clip-har-app
-```
-
-### TensorRT Performance
-
-In my benchmarks, TensorRT provides significant speed improvements:
-
-| Model Format | Inference Time (ms) | FPS | Relative Speed |
-|--------------|---------------------|-----|----------------|
-| PyTorch      | ~25-30ms            | ~35 | 1x             |
-| ONNX         | ~15-20ms            | ~60 | ~1.7x          |
-| TensorRT FP16| ~5-8ms              | ~150| ~4-5x          |
-
-These improvements make real-time processing possible even on edge devices with compatible NVIDIA GPUs.
-
-## Project Structure
-
-```
-CLIP_HAR_PROJECT/
-├── app/                  # Streamlit application
-├── configs/              # Configuration files
-├── data/                 # Data handling modules
-│   ├── dataset.py        # Dataset loading and preparation
-│   ├── preprocessing.py  # Data preprocessing utilities
-│   └── augmentation.py   # Augmentation strategies
-├── deployment/           # Deployment utilities
-│   └── export.py         # Model export (ONNX, TensorRT)
-├── evaluation/           # Evaluation modules
-│   ├── evaluator.py      # Evaluation orchestration
-│   ├── metrics.py        # Metric computation utilities
-│   └── visualization.py  # Result visualization
-├── mlops/                # MLOps integration
-│   ├── tracking.py       # Unified tracking system (MLflow & wandb)
-│   ├── dvc_utils.py      # DVC integration utilities
-│   ├── huggingface_hub_utils.py  # HuggingFace Hub integration
-│   ├── automated_training.py     # Automated training module
-│   └── inference_serving.py      # Inference serving module
-├── models/               # Model definitions
-│   ├── clip_model.py     # CLIP-based model
-│   └── model_factory.py  # Model creation utilities
-├── pipeline/             # End-to-end pipelines
-│   ├── training_pipeline.py  # Training pipeline
-│   └── inference_pipeline.py # Inference pipeline
-├── training/             # Training modules
-│   ├── distributed.py    # Distributed training utilities
-│   └── trainer.py        # Trainer implementations
-├── utils/                # Utility functions
-├── docs/                 # Documentation
-│   ├── architecture.md   # Detailed architecture overview
-│   ├── docker_guide.md   # Docker containerization guide
-│   ├── api_reference.md  # API reference documentation
-│   └── experiment_tracking.md  # Experiment tracking guide
-├── evaluate.py           # Evaluation script
-├── launch_distributed.py # Distributed training launcher
-├── train.py              # Training script
-├── docker/               # Docker configuration files
-│   ├── docker-compose.yml # Docker Compose configuration
-│   ├── Dockerfile.train  # Training container Dockerfile
-│   ├── Dockerfile.app    # App/Inference container Dockerfile
-│   └── Dockerfile        # Base Dockerfile
-├── dvc.yaml              # DVC pipeline definition
-└── requirements.txt      # Project dependencies
-```
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/tuandung222/Open-vocabulary-Action-Recognition-with-CLIP.git
-   cd CLIP_HAR_PROJECT
-   ```
-
-2. Install the required packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Set up DVC:
-   ```bash
-   dvc init
-   dvc add data/raw  # Add raw data to version control
-   ```
-
-## Training
-
-### Single-GPU Training
-
-```bash
-python train.py --distributed_mode none --batch_size 128 --max_epochs 15
-```
-
-### Distributed Training (DDP)
-
-```bash
-python launch_distributed.py --distributed_mode ddp --batch_size 64 --max_epochs 15
-```
-
-### Using the Training Pipeline
-
-```bash
-python -m CLIP_HAR_PROJECT.pipeline.training_pipeline \
-    --config_path configs/training_config.yaml \
-    --output_dir outputs/training_run \
-    --distributed_mode ddp \
-    --augmentation_strength medium
-```
-
-### Automated Training
-
-Automate the complete training pipeline with specific dataset versions and model checkpoints:
-
-```bash
-python -m CLIP_HAR_PROJECT.mlops.automated_training \
-    --config configs/training_config.yaml \
-    --output_dir outputs/auto_training \
-    --dataset_version v1.2 \
-    --checkpoint previous_models/checkpoint.pt \
-    --push_to_hub \
-    --experiment_name "clip_har_v2" \
-    --distributed_mode ddp
-```
-
-The automated training pipeline:
-- Loads a specific dataset version using DVC
-- Starts from a checkpoint if provided
-- Runs the complete training pipeline
-- Pushes the trained model to HuggingFace Hub
-- Saves all results and metrics
-
-## Evaluation
-
-Evaluate a trained model:
-
-```bash
-python evaluate.py --model_path /path/to/checkpoint.pt --output_dir results
-```
-
-The evaluation produces:
-- Accuracy, precision, recall, and F1 score
-- Confusion matrix visualization
-- Per-class accuracy analysis
-- Detailed classification report
-
-## Experiment Tracking
-
-### Dual Tracking with MLflow and Weights & Biases
-
-The project supports both MLflow and Weights & Biases for experiment tracking simultaneously:
-
-```bash
-# Use both MLflow and wandb
-python train.py --experiment_name "clip_har_experiment"
-
-# Use only MLflow
-python train.py --use_mlflow --no_wandb --experiment_name "clip_har_experiment"
-
-# Use only wandb
-python train.py --no_mlflow --use_wandb --experiment_name "clip_har_experiment"
-
-# Disable all tracking
-python train.py --no_tracking
-```
-
-### Setting up MLflow Server (Self-hosted)
-
-```bash
-# Start MLflow tracking server
-mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
-```
-
-The MLflow UI (http://localhost:5000) provides:
-- Experiment comparison
-- Metric visualization
-- Model versioning
-- Artifact management
-
-### Setting up Weights & Biases (Cloud)
-
-```bash
-# Login to wandb
-wandb login
-
-# Run training with wandb project/group
-python train.py --use_wandb --project_name "clip_har" --group_name "experiments"
-```
-
-The wandb dashboard provides:
-- Real-time training monitoring
-- Advanced visualizations
-- Team collaboration
-- Run comparisons
-
-## Data Version Control with DVC
-
-```bash
-# Initialize DVC
-dvc init
-
-# Add dataset to DVC tracking
-dvc add data/raw
-
-# Run the pipeline
-dvc repro
-
-# Push data to remote storage (if configured)
-dvc push
-```
-
-The DVC pipeline in `dvc.yaml` includes stages for:
-- Data preparation
-- Model training
-- Evaluation
-- Model export
-
-## Model Export and Deployment
-
-Export a trained model:
-
-```bash
-python -m CLIP_HAR_PROJECT.deployment.export_clip_model \
-    --model_path outputs/trained_model.pt \
-    --export_format onnx tensorrt torchscript \
-    --benchmark
 ```
 
 ## Docker Containers
