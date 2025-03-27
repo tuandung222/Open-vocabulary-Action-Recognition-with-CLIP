@@ -98,46 +98,59 @@ def process_image(image, image_processor, model, class_names, device):
     }
 
 
-def run_webcam_prediction(image_processor, model, class_names, device, stop_button):
+def run_webcam_prediction(image_processor, model, class_names, device):
     """Run predictions on webcam feed."""
-    # Start webcam
-    cap = cv2.VideoCapture(0)
+    # Initialize webcam
+    try:
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            st.error("Failed to open webcam. Please check your webcam connection.")
+            return
+    except Exception as e:
+        st.error(f"Error initializing webcam: {str(e)}")
+        return
 
-    st.write("Webcam is active. Press 'Stop Webcam' to stop.")
-
-    # Create placeholder for webcam feed
+    # Create placeholders
     webcam_placeholder = st.empty()
     prediction_placeholder = st.empty()
+    
+    try:
+        # Run webcam loop until stop button is pressed
+        while st.session_state.webcam_running:
+            # Read frame
+            ret, frame = cap.read()
+            if not ret:
+                st.error("Failed to capture image from webcam")
+                st.session_state.webcam_running = False
+                break
 
-    while not stop_button:
-        # Read frame
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Failed to capture image from webcam")
-            break
+            # Process frame
+            try:
+                results = process_image(frame, image_processor, model, class_names, device)
+                
+                # Display frame with prediction
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                webcam_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
 
-        # Process frame
-        results = process_image(frame, image_processor, model, class_names, device)
+                # Display prediction
+                with prediction_placeholder.container():
+                    cols = st.columns(5)
+                    for i, (cls, score) in enumerate(
+                        zip(results["top_classes"], results["top_scores"])
+                    ):
+                        with cols[i]:
+                            st.metric(label=cls, value=f"{score:.2f}")
+            except Exception as e:
+                st.error(f"Error processing frame: {str(e)}")
+                continue
 
-        # Display frame with prediction
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        webcam_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
-
-        # Display prediction
-        with prediction_placeholder.container():
-            cols = st.columns(5)
-            for i, (cls, score) in enumerate(
-                zip(results["top_classes"], results["top_scores"])
-            ):
-                with cols[i]:
-                    st.metric(label=cls, value=f"{score:.2f}")
-
-        # Check if stop button was clicked
-        if stop_button:
-            break
-
-    # Release webcam
-    cap.release()
+            # Add a small delay
+            cv2.waitKey(10)
+        
+    finally:
+        # Release webcam
+        cap.release()
+        st.info("Webcam stopped")
 
 
 def plot_confidence_chart(class_names, scores):
@@ -162,6 +175,10 @@ def main():
     """Main function for the Streamlit app."""
     st.title("Human Action Recognition")
     st.write("Classify human actions in images using CLIP")
+
+    # Initialize session state for webcam control
+    if 'webcam_running' not in st.session_state:
+        st.session_state.webcam_running = False
 
     # Sidebar
     st.sidebar.title("Settings")
@@ -248,16 +265,46 @@ def main():
         st.header("Webcam Prediction")
 
         if model:
-            # Create stop button
-            stop_button = st.button("Stop Webcam")
-
-            # Start webcam if button is clicked
-            start_button = st.button("Start Webcam")
-
-            if start_button:
-                run_webcam_prediction(
-                    image_processor, model, class_names, device, stop_button
+            # Webcam controls
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                start_button = st.button(
+                    "Start Webcam", 
+                    disabled=st.session_state.webcam_running,
+                    use_container_width=True
                 )
+                
+            with col2:
+                stop_button = st.button(
+                    "Stop Webcam", 
+                    disabled=not st.session_state.webcam_running,
+                    use_container_width=True
+                )
+            
+            # Handle button clicks
+            if start_button:
+                st.session_state.webcam_running = True
+                st.info("Starting webcam...")
+                run_webcam_prediction(image_processor, model, class_names, device)
+                
+            if stop_button:
+                st.session_state.webcam_running = False
+                st.info("Stopping webcam...")
+                
+            # Display webcam status
+            st.markdown(f"**Webcam Status**: {'Running' if st.session_state.webcam_running else 'Stopped'}")
+            
+            # Instructions
+            with st.expander("Webcam Instructions", expanded=False):
+                st.markdown("""
+                1. Click 'Start Webcam' to begin real-time action recognition
+                2. Position yourself in the camera frame
+                3. Perform different actions to see the predictions
+                4. Click 'Stop Webcam' when finished
+                
+                Note: If the webcam doesn't start, please check your camera permissions.
+                """)
         else:
             st.warning("Please provide a valid model checkpoint path in the sidebar.")
 
