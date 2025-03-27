@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clip-har-inference
+  labels:
+    app: clip-har
+    component: inference
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: clip-har
+      component: inference
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: clip-har
+        component: inference
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: inference-service
+        image: tuandung222/clip-har-inference:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: MODEL_PATH
+          value: "/models/clip-har-v1.pt"
+        - name: MODEL_TYPE
+          value: "tensorrt"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: MAX_BATCH_SIZE
+          value: "32"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - name: models-volume
+          mountPath: /models
+        - name: config-volume
+          mountPath: /app/configs
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: models-volume
+        persistentVolumeClaim:
+          claimName: clip-har-models-pvc
+      - name: config-volume
+        configMap:
+          name: clip-har-inference-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clip-har-inference
+  labels:
+    app: clip-har
+    component: inference
+spec:
+  selector:
+    app: clip-har
+    component: inference
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: clip-har-inference-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: clip-har-inference
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clip-har-models-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clip-har-inference-config
+data:
+  config.yaml: |
+    model:
+      clip_model_name: "openai/clip-vit-base-patch16"
+      num_classes: 15
+      prompt_template: "a photo of person/people who is/are {label}"
+    inference:
+      batch_size: 32
+      workers: 4
+      device: "cuda"
+      precision: "fp16"
+    monitoring:
+      enable_metrics: true
+      log_predictions: true
+      log_level: "INFO" 

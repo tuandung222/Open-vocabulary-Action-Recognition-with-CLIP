@@ -445,6 +445,99 @@ The CLIP-based model achieves:
 - [Experiment Tracking Guide](docs/experiment_tracking.md)
 - [Project Roadmap](ROADMAP.md)
 
+## Kubernetes Deployment
+
+For production deployments, I've prepared Kubernetes configurations to ensure scalable and reliable service operation. The deployment uses a microservices architecture with separate components for inference, model management, and monitoring.
+
+### Kubernetes Setup
+
+The `kubernetes/` directory contains all necessary configuration files:
+
+```bash
+# Apply the entire configuration
+kubectl apply -f kubernetes/
+
+# Or apply individual components
+kubectl apply -f kubernetes/clip-har-inference.yaml
+kubectl apply -f kubernetes/clip-har-monitoring.yaml
+```
+
+### Key Components
+
+- **Inference Service**: Scalable pods with auto-scaling based on CPU/GPU utilization
+- **Model Registry**: Persistent storage for model versions
+- **API Gateway**: Manages external access and load balancing
+- **HPA (Horizontal Pod Autoscaler)**: Automatically scales based on demand
+
+### Resource Allocation
+
+The deployment is configured with appropriate resource requests and limits:
+
+```yaml
+resources:
+  requests:
+    memory: "2Gi"
+    cpu: "1"
+    nvidia.com/gpu: 1
+  limits:
+    memory: "4Gi"
+    cpu: "2"
+    nvidia.com/gpu: 1
+```
+
+## Monitoring Infrastructure
+
+I've implemented a comprehensive monitoring stack using industry-standard tools for observability and performance tracking.
+
+### Prometheus for Metrics Collection
+
+The system uses Prometheus to collect and store time-series metrics:
+
+- **Custom Metrics**: Model inference latency, throughput, GPU utilization
+- **System Metrics**: Node resource utilization, network throughput
+- **Business Metrics**: Requests per minute, success rates
+
+```bash
+# Access Prometheus dashboard
+kubectl port-forward svc/prometheus-server 9090:9090
+```
+
+### Kibana and Elasticsearch for Logging
+
+For log aggregation and analysis:
+
+- **Centralized Logging**: All service logs collected and indexed
+- **Structured Logging**: JSON-formatted logs with standardized fields
+- **Log Retention**: Configurable retention policies
+
+```bash
+# Access Kibana dashboard
+kubectl port-forward svc/kibana 5601:5601
+```
+
+### Grafana Dashboards
+
+Preconfigured Grafana dashboards provide visual monitoring:
+
+- **System Overview**: Resource utilization across the cluster
+- **Model Performance**: Inference times, accuracy metrics
+- **API Performance**: Request rates, latencies, error rates
+
+```bash
+# Access Grafana dashboard
+kubectl port-forward svc/grafana 3000:3000
+```
+
+### Alerting
+
+The monitoring system includes alerting for critical conditions:
+
+- **Model Drift**: Alert when accuracy metrics drop below thresholds
+- **Resource Constraints**: Notify on memory/CPU/GPU pressure
+- **Error Rates**: Alert on elevated API error rates
+
+Alerts can be configured to notify through various channels (email, Slack, PagerDuty).
+
 ## Acknowledgements
 
 - [OpenAI CLIP](https://github.com/openai/CLIP)
