@@ -136,6 +136,41 @@ python launch_distributed.py \
     --output_dir outputs/fsdp_training
 ```
 
+### How Distributed Training Works
+
+Under the hood, the distributed training in this project is implemented using PyTorch's distributed training capabilities, specifically DistributedDataParallel (DDP) and FullyShardedDataParallel (FSDP). Here's how it works:
+
+1. **Launcher Abstraction**: When you run `launch_distributed.py`, it abstracts away the complexity of setting up distributed training:
+   - It detects the number of available GPUs
+   - It automatically configures the `torchrun` command with appropriate arguments
+   - It launches the main training script (`train.py`) with the proper environment variables set
+
+2. **Behind the Scenes**: The launcher is actually using `torchrun` (PyTorch's distributed launcher) to spawn multiple processes:
+   ```python
+   # From launch_distributed.py
+   cmd = [
+       "torchrun",
+       "--nproc_per_node", str(num_gpus),
+       "--master_addr", args.master_addr,
+       "--master_port", args.master_port,
+       "train.py",
+       # ... additional arguments
+   ]
+   ```
+
+3. **Process Management**: Each GPU gets its own Python process with:
+   - A unique `LOCAL_RANK` (GPU index)
+   - A unique `RANK` (process index in the distributed group)
+   - Shared `WORLD_SIZE` (total number of processes)
+
+4. **Trainer Integration**: Inside the `DistributedTrainer` class, the distributed environment is automatically set up based on these environment variables:
+   - The model is wrapped in DDP or FSDP depending on your choice
+   - Distributed samplers are created for the datasets
+   - Gradients are synchronized across processes during training
+   - Only the main process (rank 0) performs logging and checkpoint saving
+
+This approach makes distributed training much simpler to use, as you don't have to manually set up process groups, wrap models, or handle synchronization - the launcher and trainer handle all these details for you.
+
 ### Training Configuration Options
 
 | Parameter | Description | Default |
@@ -515,170 +550,4 @@ For production deployments, I've prepared Kubernetes configurations to ensure sc
 
 ### Kubernetes Setup
 
-The `kubernetes/` directory contains all necessary configuration files:
-
-```bash
-# Apply the entire configuration
-kubectl apply -f kubernetes/
-
-# Or apply individual components
-kubectl apply -f kubernetes/clip-har-inference.yaml
-kubectl apply -f kubernetes/clip-har-monitoring.yaml
-```
-
-### Key Components
-
-- **Inference Service**: Scalable pods with auto-scaling based on CPU/GPU utilization
-- **Model Registry**: Persistent storage for model versions
-- **API Gateway**: Manages external access and load balancing
-- **HPA (Horizontal Pod Autoscaler)**: Automatically scales based on demand
-
-### Resource Allocation
-
-The deployment is configured with appropriate resource requests and limits:
-
-```yaml
-resources:
-  requests:
-    memory: "2Gi"
-    cpu: "1"
-    nvidia.com/gpu: 1
-  limits:
-    memory: "4Gi"
-    cpu: "2"
-    nvidia.com/gpu: 1
-```
-
-## 19. Monitoring Infrastructure
-
-I've implemented a comprehensive monitoring stack using industry-standard tools for observability and performance tracking.
-
-### Prometheus for Metrics Collection
-
-The system uses Prometheus to collect and store time-series metrics:
-
-- **Custom Metrics**: Model inference latency, throughput, GPU utilization
-- **System Metrics**: Node resource utilization, network throughput
-- **Business Metrics**: Requests per minute, success rates
-
-```bash
-# Access Prometheus dashboard
-kubectl port-forward svc/prometheus-server 9090:9090
-```
-
-### Kibana and Elasticsearch for Logging
-
-For log aggregation and analysis:
-
-- **Centralized Logging**: All service logs collected and indexed
-- **Structured Logging**: JSON-formatted logs with standardized fields
-- **Log Retention**: Configurable retention policies
-
-```bash
-# Access Kibana dashboard
-kubectl port-forward svc/kibana 5601:5601
-```
-
-### Grafana Dashboards
-
-Preconfigured Grafana dashboards provide visual monitoring:
-
-- **System Overview**: Resource utilization across the cluster
-- **Model Performance**: Inference times, accuracy metrics
-- **API Performance**: Request rates, latencies, error rates
-
-```bash
-# Access Grafana dashboard
-kubectl port-forward svc/grafana 3000:3000
-```
-
-### Alerting
-
-The monitoring system includes alerting for critical conditions:
-
-- **Model Drift**: Alert when accuracy metrics drop below thresholds
-- **Resource Constraints**: Notify on memory/CPU/GPU pressure
-- **Error Rates**: Alert on elevated API error rates
-
-Alerts can be configured to notify through various channels (email, Slack, PagerDuty).
-
-## 20. CI/CD Pipeline
-
-The CLIP HAR project implements a robust CI/CD pipeline to automate testing, building, and deployment processes while ensuring code quality and operational reliability.
-
-### Pipeline Overview
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│    Build    │───▶│    Test     │───▶│ Model Eval  │───▶│  Artifacts  │───▶│   Deploy    │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-```
-
-### GitHub Actions Workflows
-
-My CI/CD pipeline is implemented with GitHub Actions and consists of these key workflows:
-
-#### 1. Continuous Integration
-- **Trigger**: On push to main/develop branches and pull requests
-- **Jobs**: Code linting (flake8, black, isort) and unit/integration tests
-- **Benefits**: Ensures code quality and prevents breaking changes
-
-#### 2. Model Evaluation
-- **Trigger**: When model code changes are pushed
-- **Jobs**: Pulls test data via DVC, evaluates model performance, uploads metrics
-- **Hardware**: Runs on GPU-enabled self-hosted runners
-- **Benefits**: Validates model performance before deployment
-
-#### 3. Container Building
-- **Trigger**: On pushes to main and version tags
-- **Jobs**: Builds Docker images with optimized caching, pushes to DockerHub
-- **Benefits**: Creates reproducible deployment artifacts
-
-#### 4. Kubernetes Deployment
-- **Trigger**: After successful container builds or manual dispatch
-- **Jobs**: Applies Kubernetes configurations with rolling updates
-- **Benefits**: Zero-downtime deployments with health checking
-
-### Automated Model Retraining
-
-The pipeline includes a weekly scheduled job for model retraining that:
-- Pulls the latest dataset version from DVC
-- Executes the automated training pipeline
-- Pushes successful models to the model registry
-- Can be manually triggered as needed
-
-### GitOps with ArgoCD
-
-For production environments, I use ArgoCD for GitOps-based continuous delivery:
-
-1. Repository structure follows the GitOps pattern with environment-specific configurations
-2. ArgoCD syncs the Kubernetes cluster state with the declared configurations
-3. Promotion between environments (dev, staging, prod) via pull requests
-
-### CI/CD Best Practices
-
-- **Immutable Artifacts**: Container images are versioned and never modified
-- **Canary Deployments**: New versions are deployed to a subset of users first
-- **Automated Rollbacks**: Failed deployments trigger automatic rollbacks
-- **Metric Validation**: Post-deployment checks verify system metrics
-- **Security Scanning**: Container images are scanned for vulnerabilities
-
-## 21. Documentation
-
-- [Architecture Overview](docs/architecture.md)
-- [Docker Setup Guide](docs/docker_guide.md)
-- [API Reference](docs/api_reference.md)
-- [Experiment Tracking Guide](docs/experiment_tracking.md)
-- [Training Guide](docs/training_guide.md)
-- [HuggingFace Integration Guide](docs/huggingface_integration_guide.md)
-- [Project Roadmap](ROADMAP.md)
-
-## 22. Acknowledgements
-
-- [OpenAI CLIP](https://github.com/openai/CLIP)
-- [HuggingFace Transformers](https://github.com/huggingface/transformers)
-- [Human Action Recognition Dataset](https://huggingface.co/datasets/Bingsu/Human_Action_Recognition)
-
-## 23. License
-
-This project is licensed under the MIT License.
+The `kubernetes/`
