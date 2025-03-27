@@ -6,51 +6,48 @@ This document provides a comprehensive overview of the CLIP HAR (Human Action Re
 
 The CLIP HAR system is designed as a modular, layered architecture to support the complete lifecycle of developing, training, evaluating, and deploying human action recognition models based on CLIP (Contrastive Language-Image Pre-training).
 
-```mermaid
-graph TD
-    subgraph "Data Layer"
-        D[Dataset Loader] --> P[Preprocessing]
-        P --> A[Augmentation]
-    end
-    
-    subgraph "Model Layer"
-        CLIP[CLIP Model] --> Custom[Custom Layers]
-        Custom --> Classifier[Classifier Head]
-    end
-    
-    subgraph "Training Layer"
-        DDP[DistributedDataParallel] --> FSDP[FullyShardedDataParallel]
-        FSDP --> Training[Training Loop]
-    end
-    
-    subgraph "Evaluation Layer"
-        Metrics[Metrics Calculation] --> ConfMatrix[Confusion Matrix]
-        ConfMatrix --> Reporting[Evaluation Reports]
-    end
-    
-    subgraph "MLOps Layer"
-        MLflow[MLflow] --> W[Weights & Biases]
-        W --> DVC[Data Version Control]
-        DVC --> HF[HuggingFace Hub]
-    end
-    
-    subgraph "Deployment Layer"
-        Export[Model Export] --> ONNX[ONNX Format]
-        Export --> TRT[TensorRT]
-        ONNX --> API[FastAPI]
-        TRT --> API
-    end
-    
-    subgraph "Application Layer"
-        API --> Streamlit[Streamlit UI]
-        API --> Client[Python Client]
-    end
-    
-    A --> CLIP
-    Classifier --> DDP
-    Training --> Metrics
-    Reporting --> MLflow
-    HF --> Export
+### High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           CLIP HAR Architecture                          │
+└─────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐
+│  Data Layer │ Model Layer │   Training  │ Evaluation  │    MLOps    │ Deployment  │
+│             │             │    Layer    │    Layer    │    Layer    │    Layer    │
+└──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┘
+       │             │             │             │             │             │
+       ▼             ▼             ▼             ▼             ▼             ▼
+┌─────────────┐┌─────────────┐┌─────────────┐┌─────────────┐┌─────────────┐┌─────────────┐
+│ Dataset     ││ CLIP Model  ││ Distributed ││ Metrics     ││ Experiment  ││ Model       │
+│ Loading     ││ Integration ││ Training    ││ Calculation ││ Tracking    ││ Export      │
+├─────────────┤├─────────────┤├─────────────┤├─────────────┤├─────────────┤├─────────────┤
+│ Preprocessing││ Custom     ││ Training    ││ Confusion   ││ DVC         ││ ONNX        │
+│             ││ Layers      ││ Loop        ││ Matrix      ││ Integration ││ Format      │
+├─────────────┤├─────────────┤├─────────────┤├─────────────┤├─────────────┤├─────────────┤
+│ Augmentation││ Classifier  ││ Model       ││ Evaluation  ││ Model       ││ TensorRT    │
+│             ││ Head        ││ Checkpoints ││ Reports     ││ Registry    ││ Format      │
+└─────────────┘└─────────────┘└─────────────┘└─────────────┘└─────────────┘└─────────────┘
+                                                                                │
+                                                                                ▼
+                                                                         ┌─────────────┐
+                                                                         │ Application │
+                                                                         │    Layer    │
+                                                                         └──────┬──────┘
+                                                                                │
+                                                                                ▼
+                                                                         ┌─────────────┐
+                                                                         │  Streamlit  │
+                                                                         │     UI      │
+                                                                         ├─────────────┤
+                                                                         │  FastAPI    │
+                                                                         │  Endpoints  │
+                                                                         ├─────────────┤
+                                                                         │   Python    │
+                                                                         │   Client    │
+                                                                         └─────────────┘
 ```
 
 ## Layer Details
@@ -59,29 +56,37 @@ graph TD
 
 The data layer manages dataset acquisition, preprocessing, and augmentation.
 
-```mermaid
-classDiagram
-    class DatasetLoader {
-        +load_dataset(dataset_name)
-        +split_dataset(train_ratio, val_ratio)
-        +create_data_loaders(batch_size)
-    }
-    
-    class Preprocessing {
-        +resize_images(size)
-        +normalize_images(mean, std)
-        +tokenize_text(text_prompts)
-    }
-    
-    class Augmentation {
-        +apply_augmentations(image, strength)
-        +random_crop()
-        +random_flip()
-        +color_jitter()
-    }
-    
-    DatasetLoader --> Preprocessing
-    Preprocessing --> Augmentation
+```
+┌──────────────────────────────────┐
+│         Data Layer Flow          │
+└──────────────────────────────────┘
+          │
+┌─────────▼─────────┐
+│   Dataset Loader  │
+└─────────┬─────────┘
+          │
+          │  • load_dataset(dataset_name)
+          │  • split_dataset(train_ratio, val_ratio)
+          │  • create_data_loaders(batch_size)
+          │
+┌─────────▼─────────┐
+│   Preprocessing   │
+└─────────┬─────────┘
+          │
+          │  • resize_images(size)
+          │  • normalize_images(mean, std)
+          │  • tokenize_text(text_prompts)
+          │
+┌─────────▼─────────┐
+│   Augmentation    │
+└─────────┬─────────┘
+          │
+          │  • apply_augmentations(image, strength)
+          │  • random_crop(), random_flip()
+          │  • color_jitter()
+          │
+          ▼
+    To Model Layer
 ```
 
 Key components:
@@ -93,29 +98,34 @@ Key components:
 
 The model layer defines the neural network architecture.
 
-```mermaid
-classDiagram
-    class CLIPModel {
-        +image_encoder
-        +text_encoder
-        +forward(images, text)
-        +extract_features(images)
-    }
-    
-    class CustomLayers {
-        +attention_module
-        +feature_fusion
-        +forward(clip_features)
-    }
-    
-    class ClassifierHead {
-        +fc_layers
-        +dropout
-        +forward(features)
-    }
-    
-    CLIPModel --> CustomLayers
-    CustomLayers --> ClassifierHead
+```
+┌──────────────────────────────────┐
+│        Model Architecture        │
+└──────────────────────────────────┘
+                │
+        ┌───────▼───────┐
+        │   CLIP Model  │
+        └───────┬───────┘
+                │  • image_encoder
+                │  • text_encoder
+                │  • extract_features(images)
+                │
+        ┌───────▼───────┐
+        │ Custom Layers │
+        └───────┬───────┘
+                │  • attention_module
+                │  • feature_fusion
+                │  • temporal_modeling
+                │
+        ┌───────▼───────┐
+        │Classifier Head│
+        └───────┬───────┘
+                │  • fc_layers
+                │  • dropout
+                │  • classification output
+                │
+                ▼
+        To Training Layer
 ```
 
 Key components:
@@ -127,24 +137,72 @@ Key components:
 
 The training layer orchestrates model training processes.
 
-```mermaid
-flowchart TD
-    A[Initialize Training] --> B{Distributed?}
-    B -->|Yes| C[Setup Distributed]
-    B -->|No| D[Single GPU]
-    C --> E[Initialize DDP/FSDP]
-    D --> F[Training Loop]
-    E --> F
-    F --> G[Forward Pass]
-    G --> H[Loss Calculation]
-    H --> I[Backward Pass]
-    I --> J[Optimizer Step]
-    J --> K{End of Epoch?}
-    K -->|No| G
-    K -->|Yes| L[Validation]
-    L --> M{Early Stopping?}
-    M -->|Yes| N[End Training]
-    M -->|No| F
+```
+┌───────────────────────────────────────────────────────────┐
+│                  Training Process Flow                     │
+└───────────────────────────────────────────────────────────┘
+                            │
+                    ┌───────▼───────┐
+                    │   Initialize  │
+                    │    Training   │
+                    └───────┬───────┘
+                            │
+              ┌─────────────┴─────────────┐
+              │                           │
+     ┌────────▼────────┐        ┌────────▼────────┐
+     │ Single GPU Mode │        │Distributed Mode │
+     └────────┬────────┘        └────────┬────────┘
+              │                           │
+              │                  ┌────────▼────────┐
+              │                  │  Setup DDP/FSDP  │
+              │                  └────────┬────────┘
+              │                           │
+              └───────────┬───────────────┘
+                          │
+                ┌─────────▼─────────┐
+                │   Training Loop   │◄────┐
+                └─────────┬─────────┘     │
+                          │               │
+                ┌─────────▼─────────┐     │
+                │    Forward Pass   │     │
+                └─────────┬─────────┘     │
+                          │               │
+                ┌─────────▼─────────┐     │
+                │ Loss Calculation  │     │
+                └─────────┬─────────┘     │
+                          │               │
+                ┌─────────▼─────────┐     │
+                │   Backward Pass   │     │
+                └─────────┬─────────┘     │
+                          │               │
+                ┌─────────▼─────────┐     │
+                │  Optimizer Step   │     │
+                └─────────┬─────────┘     │
+                          │               │
+                ┌─────────▼─────────┐     │
+                │   End of Epoch?   │     │
+                └─────────┬─────────┘     │
+                          │               │
+                          │ Yes           │ No
+                          ▼               │
+                ┌─────────────────┐       │
+                │   Validation    │       │
+                └─────────┬───────┘       │
+                          │               │
+                ┌─────────▼─────────┐     │
+                │  Early Stopping?  │     │
+                └─────────┬─────────┘     │
+                          │               │
+              ┌───────────┴────────┐      │
+              │                    │      │
+              │ No                 │ Yes  │
+              ▼                    ▼      │
+        ┌───────────┐       ┌───────────┐ │
+        │ Continue  ├───────►    End    │ │
+        │ Training  │       │  Training │ │
+        └───────────┘       └───────────┘ │
+              │                           │
+              └───────────────────────────┘
 ```
 
 Key components:
@@ -156,14 +214,47 @@ Key components:
 
 The evaluation layer assesses model performance.
 
-```mermaid
-flowchart LR
-    A[Load Model] --> B[Prepare Dataset]
-    B --> C[Run Inference]
-    C --> D[Calculate Metrics]
-    D --> E[Generate Confusion Matrix]
-    E --> F[Create Visualizations]
-    F --> G[Produce Reports]
+```
+┌────────────────────────────────────────────────────┐
+│              Evaluation Workflow                    │
+└────────────────────────────────────────────────────┘
+              │
+      ┌───────▼────────┐
+      │   Load Model   │
+      └───────┬────────┘
+              │
+      ┌───────▼────────┐
+      │Prepare Dataset │
+      └───────┬────────┘
+              │
+      ┌───────▼────────┐
+      │ Run Inference  │
+      └───────┬────────┘
+              │
+┌─────────────┼─────────────┐
+│             │             │
+│    ┌────────▼─────────┐   │
+│    │Calculate Metrics │   │
+│    └────────┬─────────┘   │
+│             │             │
+│    ┌────────▼─────────┐   │
+│    │  Generate Conf.  │   │
+│    │     Matrix       │   │
+│    └────────┬─────────┘   │
+│             │             │
+│    ┌────────▼─────────┐   │
+│    │     Create       │   │
+│    │  Visualizations  │   │
+│    └────────┬─────────┘   │
+│             │             │
+└─────────────┼─────────────┘
+              │
+      ┌───────▼────────┐
+      │Produce Reports │
+      └───────┬────────┘
+              │
+              ▼
+        To MLOps Layer
 ```
 
 Key components:
@@ -175,24 +266,39 @@ Key components:
 
 The MLOps layer handles experiment tracking and model management.
 
-```mermaid
-graph TD
-    subgraph "Experiment Tracking"
-        MLflow[MLflow] --- Wandb[Weights & Biases]
-        MLflow --- Multi[Multi Tracker]
-        Wandb --- Multi
-    end
-    
-    subgraph "Version Control"
-        DVC[Data Version Control] --- Git[Git]
-    end
-    
-    subgraph "Model Registry"
-        HF[HuggingFace Hub] --- Local[Local Registry]
-    end
-    
-    Multi --> DVC
-    DVC --> HF
+```
+┌──────────────────────────────────────────────────────────┐
+│                     MLOps Layer                           │
+└──────────────────────────────────────────────────────────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+┌────────▼─────────┐┌──────▼───────┐┌────────▼─────────┐
+│    Experiment    ││    Version   ││  Model Registry  │
+│     Tracking     ││    Control   ││                  │
+└────────┬─────────┘└──────┬───────┘└────────┬─────────┘
+         │                 │                 │
+    ┌────▼────┐        ┌───▼───┐        ┌────▼─────┐
+    │ MLflow  │        │  DVC  │        │HuggingFace│
+    └────┬────┘        └───┬───┘        │   Hub     │
+         │                 │            └────┬─────┘
+    ┌────▼────┐            │                 │
+    │Weights & │           │            ┌────▼─────┐
+    │ Biases   │           │            │  Local   │
+    └────┬────┘            │            │ Registry │
+         │                 │            └────┬─────┘
+         └────────┐   ┌────┘                 │
+                  │   │                      │
+                  ▼   ▼                      ▼
+             ┌─────────────┐           ┌──────────┐
+             │  Tracking   │───────────►  Model   │
+             │  Database   │           │ Storage  │
+             └─────────────┘           └──────────┘
+                    │                       │
+                    └───────────┬───────────┘
+                                │
+                                ▼
+                     To Deployment Layer
 ```
 
 Key components:
@@ -204,25 +310,43 @@ Key components:
 
 The deployment layer prepares models for production use.
 
-```mermaid
-flowchart TD
-    A[Trained Model] --> B{Export Format}
-    B --> C[PyTorch]
-    B --> D[ONNX]
-    B --> E[TorchScript]
-    B --> F[TensorRT]
-    
-    C --> G[Model Adapter]
-    D --> G
-    E --> G
-    F --> G
-    
-    G --> H[FastAPI Server]
-    H --> I[REST API]
-    
-    I --> J[Python Client]
-    I --> K[Web Application]
-    I --> L[Mobile Application]
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     Deployment Layer                          │
+└──────────────────────────────────────────────────────────────┘
+                             │
+                     ┌───────▼───────┐
+                     │ Trained Model │
+                     └───────┬───────┘
+                             │
+         ┌─────────────────────────────────────┐
+         │                                     │
+┌────────▼─────────┐   ┌────────────┐   ┌──────▼───────┐
+│  Export Formats  │   │   Model    │   │  Inference   │
+│                  │   │  Adapters  │   │   Server     │
+└────────┬─────────┘   └──────┬─────┘   └──────┬───────┘
+         │                    │                │
+    ┌────┴───────────┐        │                │
+    │                │        │                │
+┌───▼────┐      ┌────▼───┐    │          ┌─────▼─────┐
+│ PyTorch │      │ ONNX   │    │          │  FastAPI  │
+└───┬────┘      └────┬───┘    │          │   Server  │
+    │                │        │          └─────┬─────┘
+┌───▼────┐      ┌────▼───┐    │                │
+│TorchScrip     │TensorRT│    │                │
+└───┬────┘      └────┬───┘    │                │
+    │                │        │                │
+    └────────┬───────┘        │                │
+             ▼                │                │
+      ┌─────────────┐         │                │
+      │  Optimized  │         │                │
+      │    Model    ├─────────┘                │
+      └──────┬──────┘                          │
+             │                                 │
+             └─────────────┬──────────────────┘
+                           │
+                           ▼
+                    To Application Layer
 ```
 
 Key components:
@@ -234,18 +358,31 @@ Key components:
 
 The application layer provides user interfaces.
 
-```mermaid
-graph LR
-    subgraph "Interfaces"
-        A[Streamlit App] --- B[REST API]
-        B --- C[Python Client]
-    end
-    
-    subgraph "Features"
-        D[Image Upload] --- A
-        E[Webcam Interface] --- A
-        F[Results Visualization] --- A
-    end
+```
+┌────────────────────────────────────────────────────┐
+│               Application Layer                     │
+└────────────────────────────────────────────────────┘
+                         │
+          ┌──────────────┴──────────────┐
+          │                             │
+┌─────────▼───────────┐      ┌──────────▼─────────┐
+│    User Interfaces  │      │   API Components   │
+└─────────┬───────────┘      └──────────┬─────────┘
+          │                             │
+    ┌─────┴─────┐                ┌──────┴───────┐
+    │           │                │              │
+┌───▼───┐  ┌────▼───┐       ┌────▼─────┐  ┌─────▼────┐
+│Stream-│  │Jupyter │       │  REST    │  │ Python   │
+│lit UI │  │Notebook│       │  API     │  │ Client   │
+└───────┘  └────────┘       └──────────┘  └──────────┘
+    │           │                │              │
+    │           │                └───────┬──────┘
+    │           │                        │
+    └───────────┼────────────────────────┘
+                │
+        ┌───────▼─────────┐
+        │    End Users    │
+        └─────────────────┘
 ```
 
 Key components:
@@ -255,77 +392,97 @@ Key components:
 
 ## Data Flow
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant App
-    participant API
-    participant Model
-    participant DataStore
-    
-    User->>App: Upload Image
-    App->>API: Request Prediction
-    API->>Model: Run Inference
-    Model->>API: Return Predictions
-    API->>App: Return Results
-    App->>User: Display Results
-    
-    opt Log Result
-        API->>DataStore: Record Prediction
-    end
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                               Data Flow                                         │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────┐          ┌─────┐          ┌─────┐          ┌─────┐          ┌──────────┐
+│User │          │App  │          │API  │          │Model│          │DataStore │
+└──┬──┘          └──┬──┘          └──┬──┘          └──┬──┘          └────┬─────┘
+   │                │                │                │                   │
+   │ Upload Image   │                │                │                   │
+   │───────────────>│                │                │                   │
+   │                │                │                │                   │
+   │                │Request Prediction                │                   │
+   │                │───────────────>│                │                   │
+   │                │                │                │                   │
+   │                │                │ Run Inference  │                   │
+   │                │                │───────────────>│                   │
+   │                │                │                │                   │
+   │                │                │ Return Predictions                 │
+   │                │                │<───────────────│                   │
+   │                │                │                │                   │
+   │                │ Return Results │                │                   │
+   │                │<───────────────│                │                   │
+   │                │                │                │                   │
+   │ Display Results│                │                │                   │
+   │<───────────────│                │                │                   │
+   │                │                │                │                   │
+   │                │                │ Record Prediction (Optional)       │
+   │                │                │───────────────────────────────────>│
+   │                │                │                │                   │
+
 ```
 
 ## Deployment Architecture
 
-```mermaid
-graph TD
-    subgraph "Development Environment"
-        A[Development Machine] --> B[Git Repository]
-        B --> C[CI/CD Pipeline]
-    end
-    
-    subgraph "Training Infrastructure"
-        C --> D[Training Container]
-        D --> E[GPU Cluster]
-    end
-    
-    subgraph "Deployment Infrastructure"
-        C --> F[Inference Container]
-        F --> G[API Server]
-        F --> H[Streamlit Server]
-    end
-    
-    subgraph "Storage"
-        I[DVC Storage] --> D
-        J[Model Registry] --> F
-    end
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Deployment Architecture                          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────┐    ┌────────────────────────┐  ┌──────────────────────┐
+│ Development Environment│    │ Training Infrastructure │  │Deployment Infrastructure│
+└───────────┬────────────┘    └───────────┬────────────┘  └───────────┬──────────┘
+            │                             │                           │
+    ┌───────▼────────┐          ┌─────────▼───────┐         ┌────────▼─────────┐
+    │  Development   │          │    Training     │         │    Inference     │
+    │    Machine     │          │    Container    │         │    Container     │
+    └───────┬────────┘          └─────────┬───────┘         └─────────┬────────┘
+            │                             │                           │
+    ┌───────▼────────┐          ┌─────────▼───────┐      ┌────────────┴───────────┐
+    │Git Repository  │          │    GPU Cluster   │      │                        │
+    └───────┬────────┘          └─────────────────┘      │                        │
+            │                                          ┌──▼───────┐      ┌────────▼─┐
+    ┌───────▼────────┐                                 │API Server│      │Streamlit │
+    │CI/CD Pipeline  │◄────────────────────────────────┘          │      │  Server  │
+    └───────┬────────┘                                 └──────────┘      └──────────┘
+            │
+            │                   ┌─────────────────────┐
+            └──────────────────►│      Storage        │
+                                └──────────┬──────────┘
+                                           │
+                                ┌──────────┴──────────┐
+                                │                     │
+                          ┌─────▼────┐         ┌──────▼─────┐
+                          │   DVC    │         │   Model    │
+                          │  Storage │         │  Registry  │
+                          └──────────┘         └────────────┘
 ```
 
 ## Module Dependencies
 
-```mermaid
-graph TD
-    app --> mlops
-    app --> models
-    
-    mlops --> models
-    mlops --> data
-    mlops --> evaluation
-    
-    deployment --> models
-    deployment --> mlops
-    
-    evaluation --> models
-    evaluation --> data
-    
-    pipeline --> training
-    pipeline --> evaluation
-    pipeline --> mlops
-    
-    training --> models
-    training --> data
-    
-    models --> data
+```
+┌──────────────────────────────────────────────────┐
+│              Module Dependencies                  │
+└──────────────────────────────────────────────────┘
+
+┌─────────┐     ┌─────────┐     ┌───────────┐
+│   app   │────►│  mlops  │────►│ evaluation│
+└────┬────┘     └────┬────┘     └─────┬─────┘
+     │               │                │
+     │               │                │
+     │          ┌────▼────┐      ┌────▼────┐
+     └─────────►│ models  │◄─────┤training │
+                └────┬────┘      └────┬────┘
+                     │                │
+                     │                │
+                     ▼                │
+                ┌────────┐            │
+                │  data  │◄───────────┘
+                └────────┘
+
 ```
 
 ## Scalability and Performance
