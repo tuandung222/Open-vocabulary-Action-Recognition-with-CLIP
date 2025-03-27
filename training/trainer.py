@@ -302,21 +302,15 @@ class DistributedTrainer:
         # Get references to model, optimizer, and scheduler
         model, optimizer, scheduler = self.model, self.optimizer, self.scheduler
 
-        # Create progress bar for training
-        pbar_train_dataloader = tqdm(
-            self.train_dataloader,
-            total=len(self.train_dataloader),
-            desc=f"Training (Rank {self.distributed_config.rank})",
-        )
-
         # Training loop
         while True:  # Continue until max epoch or patience is reached
             self.cur_epoch += 1
-
-            # Reset progress bar for new epoch
-            pbar_train_dataloader.reset()
-            pbar_train_dataloader.set_description(
-                f"Epoch {self.cur_epoch} (Rank {self.distributed_config.rank})"
+            
+            # Create new progress bar for each epoch instead of resetting
+            pbar_train_dataloader = tqdm(
+                self.train_dataloader,
+                total=len(self.train_dataloader),
+                desc=f"Epoch {self.cur_epoch} (Rank {self.distributed_config.rank})"
             )
 
             # Set sampler epoch for distributed training
