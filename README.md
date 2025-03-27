@@ -7,7 +7,7 @@ This project implements an end-to-end solution for Human Action Recognition (HAR
 - **Advanced Model Architecture**: Leverages CLIP with custom text prompts for zero-shot and fine-tuned action classification
 - **Distributed Training**: Supports single-GPU, DDP, and FSDP training modes
 - **Comprehensive Evaluation**: Detailed metrics, confusion matrices, and per-class accuracy visualizations
-- **Dual Experiment Tracking**: Support for both MLflow (self-hosted) and Weights & Bianas (cloud) simultaneously
+- **Dual Experiment Tracking**: Support for both MLflow (self-hosted) and Weights & Biases (cloud) simultaneously
 - **Automated Training & Deployment**: End-to-end automated training with DVC dataset versioning and HuggingFace Hub integration
 - **Production-Ready Inference**: REST API for model serving with multiple model format support (PyTorch, ONNX, TorchScript)
 - **Data Version Control**: DVC integration for dataset and model versioning
@@ -215,9 +215,9 @@ The evaluation produces:
 
 ## Experiment Tracking
 
-### Dual Tracking with MLflow and Weights & Bianas
+### Dual Tracking with MLflow and Weights & Biases
 
-The project supports both MLflow and Weights & Bianas for experiment tracking simultaneously:
+The project supports both MLflow and Weights & Biases for experiment tracking simultaneously:
 
 ```bash
 # Use both MLflow and wandb
@@ -246,7 +246,7 @@ The MLflow UI (http://localhost:5000) provides:
 - Model versioning
 - Artifact management
 
-### Setting up Weights & Bianas (Cloud)
+### Setting up Weights & Biases (Cloud)
 
 ```bash
 # Login to wandb
@@ -378,7 +378,7 @@ from CLIP_HAR_PROJECT.mlops.huggingface_hub_utils import push_model_to_hub
 model_url = push_model_to_hub(
     model=model,
     model_name="clip-har-v1",
-    repo_id="tuandung222/clip-har-v1",
+    repo_id="tuandunghcmut/clip-har-v1",
     commit_message="Upload CLIP HAR model",
     metadata={"accuracy": 0.92, "f1_score": 0.91},
     private=False
@@ -405,7 +405,7 @@ Features:
 - PyTorch 2.0+
 - HuggingFace Transformers
 - MLflow
-- Weights & Bianas
+- Weights & Biases
 - DVC
 - Streamlit
 - ONNX Runtime
