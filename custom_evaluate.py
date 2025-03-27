@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 # Script to evaluate a trained model on the HAR test set
 
-import argparse
+# Set tokenizers parallelism to avoid deadlocks with multiprocessing
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+import argparse
 import sys
 from pathlib import Path
 
@@ -97,12 +100,14 @@ def load_model_from_checkpoint(model_path, model_name, labels, prompt_template):
 
 def evaluate_model(model, test_dataset, batch_size=64, num_workers=4, device="cuda"):
     """Evaluate a model on the test set."""
-    # Create dataloader
+    # Create dataloader with timeout to prevent hanging
     test_dataloader = DataLoader(
         test_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
         collate_fn=collate_fn,
+        timeout=60,  # 60 second timeout
+        persistent_workers=True if num_workers > 0 else False,
     )
 
     # Move model to device
@@ -135,6 +140,10 @@ def evaluate_model(model, test_dataset, batch_size=64, num_workers=4, device="cu
     predictions = torch.cat(all_predictions).numpy()
     references = torch.cat(all_references).numpy()
     scores = torch.cat(all_scores).numpy()
+    
+    # Clean up CUDA cache to prevent memory issues
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
     return predictions, references, scores
 
@@ -273,6 +282,38 @@ def main():
         device=device,
     )
 
+    # Save raw predictions and references for debugging
+    print(f"Saving raw predictions and references for debugging...")
+    np.save(os.path.join(args.output_dir, "predictions.npy"), predictions)
+    np.save(os.path.join(args.output_dir, "references.npy"), references)
+    
+    # Print detailed class distribution
+    class_counts = {}
+    for label in references:
+        if label not in class_counts:
+            class_counts[label] = 0
+        class_counts[label] += 1
+    
+    print("\nTest Set Class Distribution:")
+    for label_id, count in sorted(class_counts.items()):
+        class_name = class_names[label_id] if label_id < len(class_names) else f"Unknown ({label_id})"
+        print(f"  {class_name}: {count} samples ({count/len(references)*100:.1f}%)")
+    
+    # Print per-class accuracy
+    class_correct = {}
+    for pred, ref in zip(predictions, references):
+        if ref not in class_correct:
+            class_correct[ref] = {"correct": 0, "total": 0}
+        class_correct[ref]["total"] += 1
+        if pred == ref:
+            class_correct[ref]["correct"] += 1
+    
+    print("\nPer-Class Accuracy:")
+    for label_id in sorted(class_correct.keys()):
+        class_name = class_names[label_id] if label_id < len(class_names) else f"Unknown ({label_id})"
+        acc = class_correct[label_id]["correct"] / class_correct[label_id]["total"]
+        print(f"  {class_name}: {acc*100:.1f}% ({class_correct[label_id]['correct']}/{class_correct[label_id]['total']})")
+
     # Compute metrics
     print(f"Computing metrics...")
     report_df, cm, cm_normalized = compute_metrics(predictions, references, class_names)
@@ -302,6 +343,14 @@ def main():
     )
 
     print(f"Evaluation complete. Results saved to {args.output_dir}")
+    
+    # Final cleanup
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    # Explicitly close all matplotlib figures
+    plt.close('all')
+    
     return 0
 
 
