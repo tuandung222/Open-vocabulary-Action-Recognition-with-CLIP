@@ -189,4 +189,4 @@ docker-compose logs clip-har-train
 2. **Use environment variables** for configuration
 3. **Mount volumes** for persistent data
 4. **Use health checks** to ensure services are running properly
-5. **Use Docker networks** to isolate services 
+5. **Use Docker networks** to isolate services

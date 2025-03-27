@@ -34,7 +34,7 @@ stages:
     outs:
       - evaluation_results/confusion_matrix.png
       - evaluation_results/class_report.csv
-      
+
   export:
     cmd: python -m CLIP_HAR_PROJECT.deployment.export_clip_model
       --model_path models/clip_har/model.pt
@@ -47,4 +47,4 @@ stages:
     outs:
       - exports/model.onnx
       - exports/model.trt:
-          persist: true 
+          persist: true

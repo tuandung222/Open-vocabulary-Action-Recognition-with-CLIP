@@ -8,22 +8,23 @@ This module provides functions for automated training workflows including:
 - Pushing models to HuggingFace Hub
 """
 
-import os
-import sys
-import subprocess
-import logging
+import argparse
 import datetime
 import json
-import argparse
-from typing import Dict, Any, List, Optional, Union
+import logging
+import os
+import subprocess
+import sys
+from typing import Any, Dict, List, Optional, Union
+
 import torch
 
-from CLIP_HAR_PROJECT.pipeline.training_pipeline import TrainingPipeline
 from CLIP_HAR_PROJECT.mlops.huggingface_hub_utils import (
+    create_model_card,
     push_model_to_hub,
     push_pipeline_to_hub,
-    create_model_card,
 )
+from CLIP_HAR_PROJECT.pipeline.training_pipeline import TrainingPipeline
 
 logger = logging.getLogger(__name__)
 

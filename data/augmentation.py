@@ -1,8 +1,9 @@
 import random
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 import torchvision.transforms as T
-from typing import Dict, List, Optional, Tuple, Union, Callable
 
 
 class HARDataAugmentation:

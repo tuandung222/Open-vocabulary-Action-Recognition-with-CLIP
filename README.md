@@ -395,4 +395,4 @@ The CLIP-based model achieves:
 
 ## License
 
-This project is licensed under the MIT License. 
+This project is licensed under the MIT License.

@@ -1,25 +1,16 @@
 import os
+from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Any, Callable, Dict, Optional, Tuple
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed.fsdp import BackwardPrefetch, CPUOffload, FullStateDictConfig
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import MixedPrecision, ShardingStrategy, StateDictType
+from torch.distributed.fsdp.wrap import default_auto_wrap_policy, enable_wrap, wrap
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed.fsdp import (
-    FullyShardedDataParallel as FSDP,
-    CPUOffload,
-    MixedPrecision,
-    BackwardPrefetch,
-    ShardingStrategy,
-    FullStateDictConfig,
-    StateDictType,
-)
-from torch.distributed.fsdp.wrap import (
-    default_auto_wrap_policy,
-    enable_wrap,
-    wrap,
-)
-from dataclasses import dataclass
-from typing import Optional, Tuple, Dict, Any, Callable
-from enum import Enum, auto
 
 
 class DistributedMode(Enum):

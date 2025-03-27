@@ -1,8 +1,9 @@
 import os
 import subprocess
-import yaml
-from typing import Dict, List, Optional, Union, Any
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+import yaml
 
 
 def setup_dvc_repo(

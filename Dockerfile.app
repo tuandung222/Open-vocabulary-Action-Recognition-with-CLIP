@@ -44,4 +44,4 @@ CMD ["sh", "-c", "nohup uvicorn CLIP_HAR_PROJECT.mlops.inference_serving:app --h
 # Labels for image metadata
 LABEL maintainer="tuandunghcmut" \
       version="1.0" \
-      description="CLIP-based Human Action Recognition - Demo App & Inference API" 
+      description="CLIP-based Human Action Recognition - Demo App & Inference API"

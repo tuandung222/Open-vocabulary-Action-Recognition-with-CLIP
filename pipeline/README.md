@@ -219,7 +219,7 @@ stages:
     outs:
       - outputs/training_run/best_model.pt
       - outputs/training_run/metrics.json
-    
+
   batch_inference:
     cmd: python -m CLIP_HAR_PROJECT.pipeline.batch_inference --model_path outputs/training_run/best_model.pt --image_dir data/test_images --output_path results/predictions.json
     deps:
@@ -227,4 +227,4 @@ stages:
       - data/test_images
     outs:
       - results/predictions.json
-``` 
+```

@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # Script to launch distributed training for HAR classification
 
-import os
-import sys
 import argparse
+import os
 import subprocess
+import sys
 from typing import List
 
 

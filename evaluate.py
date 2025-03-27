@@ -1,24 +1,28 @@
 #!/usr/bin/env python
 # Script to evaluate a trained model on the HAR test set
 
+import argparse
 import os
 import sys
-import argparse
-import torch
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-from transformers import CLIPTokenizerFast, CLIPImageProcessor
-from sklearn.metrics import confusion_matrix, classification_report
-from pathlib import Path
+import torch
+from sklearn.metrics import classification_report, confusion_matrix
+from torch.utils.data import DataLoader
+from transformers import CLIPImageProcessor, CLIPTokenizerFast
 
 # Import project modules
 from CLIP_HAR_PROJECT.configs.default import get_config
+from CLIP_HAR_PROJECT.data.preprocessing import (
+    collate_fn,
+    get_class_mappings,
+    prepare_har_dataset,
+)
 from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
-from CLIP_HAR_PROJECT.data.preprocessing import prepare_har_dataset, get_class_mappings
-from CLIP_HAR_PROJECT.data.preprocessing import collate_fn
-from torch.utils.data import DataLoader
 
 
 def parse_args():

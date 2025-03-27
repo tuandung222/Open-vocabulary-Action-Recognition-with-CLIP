@@ -1,27 +1,28 @@
 #!/usr/bin/env python
 # Main training script for HAR classification using CLIP
 
+import argparse
+import datetime
 import os
 import sys
-import argparse
+
 import torch
-import datetime
 import wandb
-from transformers import CLIPTokenizerFast, CLIPImageProcessor
+from transformers import CLIPImageProcessor, CLIPTokenizerFast
 
 # Import project modules
 from CLIP_HAR_PROJECT.configs.default import get_config
+from CLIP_HAR_PROJECT.data.preprocessing import (
+    get_class_mappings,
+    prepare_har_dataset,
+    visualize_samples,
+)
 from CLIP_HAR_PROJECT.models.clip_model import (
     CLIPLabelRetriever,
     freeze_clip_parameters,
     print_trainable_parameters,
 )
-from CLIP_HAR_PROJECT.data.preprocessing import (
-    prepare_har_dataset,
-    visualize_samples,
-    get_class_mappings,
-)
-from CLIP_HAR_PROJECT.training.trainer import TrainingConfig, DistributedTrainer
+from CLIP_HAR_PROJECT.training.trainer import DistributedTrainer, TrainingConfig
 
 
 def parse_args():

@@ -1,20 +1,20 @@
 """
 Visualization functions for CLIP HAR evaluation.
 
-This module contains functions for visualizing evaluation results, 
+This module contains functions for visualizing evaluation results,
 including confusion matrices and accuracy charts.
 """
 
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import List, Tuple, Dict, Optional, Union, Any
-from pathlib import Path
 import torch
 from PIL import Image
-
 from sklearn.metrics import confusion_matrix
 
 

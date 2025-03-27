@@ -7,24 +7,25 @@ This module provides utilities for serving CLIP HAR models including:
 - Client for making inference requests
 """
 
-import os
+import base64
 import io
 import json
 import logging
-import base64
-from typing import Dict, Any, List, Optional, Union, Tuple
+import os
 import time
-from PIL import Image
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import numpy as np
+import requests
 import torch
-from torch import nn
 import torchvision.transforms as T
-from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Form
+import uvicorn
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import uvicorn
-import requests
+from PIL import Image
 from pydantic import BaseModel
+from torch import nn
 
 # Optional imports for model optimization
 try:

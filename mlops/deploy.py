@@ -1,17 +1,18 @@
-import os
 import argparse
-import torch
-import mlflow
-from typing import Dict, Optional, Any
+import os
+from typing import Any, Dict, Optional
 
-from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
+import mlflow
+import torch
+
 from CLIP_HAR_PROJECT.configs import get_config
 from CLIP_HAR_PROJECT.mlops.tracking import (
-    setup_mlflow,
-    log_model_params,
     log_metrics,
     log_model,
+    log_model_params,
+    setup_mlflow,
 )
+from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
 
 
 def parse_args():

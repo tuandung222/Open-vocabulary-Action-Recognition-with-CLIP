@@ -1,27 +1,28 @@
 import os
 import sys
+from io import BytesIO
+from pathlib import Path
+
+import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
-import matplotlib.pyplot as plt
-import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
+import torch
 from PIL import Image
-from pathlib import Path
-import cv2
-from io import BytesIO
-from transformers import CLIPTokenizerFast, CLIPImageProcessor
+from transformers import CLIPImageProcessor, CLIPTokenizerFast
 
 # Add project root to path
 project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# Import project modules
-from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
 from CLIP_HAR_PROJECT.data.preprocessing import get_class_mappings
 
+# Import project modules
+from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
 
 # Set page configuration
 st.set_page_config(
@@ -266,9 +267,9 @@ def main():
 
         st.write(
             """
-        This app uses a CLIP-based model to classify human actions in images. 
+        This app uses a CLIP-based model to classify human actions in images.
         The model has been fine-tuned on the Human Action Recognition (HAR) dataset.
-        
+
         ## Available Actions
         The model can recognize the following actions:
         """
@@ -282,10 +283,10 @@ def main():
         st.write(
             """
         ## Model Details
-        The base model is CLIP (Contrastive Language-Image Pre-training) by OpenAI. 
+        The base model is CLIP (Contrastive Language-Image Pre-training) by OpenAI.
         CLIP is trained to understand images in relation to text descriptions, allowing
         it to perform zero-shot classification of images.
-        
+
         In this project, we fine-tune CLIP to specifically recognize human actions by
         using text prompts like "a photo of person/people who is/are {action}".
         """

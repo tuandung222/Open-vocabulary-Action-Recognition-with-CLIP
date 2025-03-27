@@ -4,22 +4,23 @@ Evaluator module for CLIP HAR Project.
 This module contains evaluator classes for different types of evaluation.
 """
 
-import os
 import logging
-from typing import Dict, List, Any, Optional, Union, Tuple, Callable
-import torch
-from torch.utils.data import Dataset, DataLoader
+import os
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from CLIP_HAR_PROJECT.evaluation.metrics import (
-    compute_metrics,
-    compute_confusion_matrix,
     compute_classification_report,
+    compute_confusion_matrix,
+    compute_metrics,
 )
 from CLIP_HAR_PROJECT.evaluation.visualization import (
-    plot_confusion_matrix,
     plot_accuracy_per_class,
+    plot_confusion_matrix,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,16 +1,17 @@
-import os
 import argparse
-import torch
+import os
 from pathlib import Path
 
-from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
+import torch
+
 from CLIP_HAR_PROJECT.configs import get_config
 from CLIP_HAR_PROJECT.deployment.export import (
+    benchmark_model,
     export_to_onnx,
     export_to_tensorrt,
     validate_exported_model,
-    benchmark_model,
 )
+from CLIP_HAR_PROJECT.models.clip_model import CLIPLabelRetriever
 
 
 def parse_args():

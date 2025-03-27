@@ -96,4 +96,4 @@ This document tracks the progress of the CLIP HAR (Human Action Recognition) pro
 
 ## Contributors
 
-- Primary Developer: tuandunghcmut 
+- Primary Developer: tuandunghcmut

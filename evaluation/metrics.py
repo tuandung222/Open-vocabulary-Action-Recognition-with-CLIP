@@ -5,10 +5,17 @@ This module contains functions for computing evaluation metrics for
 classification tasks in human action recognition.
 """
 
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
-from typing import Dict, List, Any, Optional, Union
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+)
 
 
 def compute_metrics(

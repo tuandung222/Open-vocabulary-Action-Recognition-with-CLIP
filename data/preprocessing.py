@@ -1,9 +1,10 @@
-import torch
-import numpy as np
-from datasets import load_dataset, Dataset, DatasetDict
-from transformers import CLIPTokenizerFast, CLIPImageProcessor
 from functools import partial
-from typing import Dict, List, Tuple, Optional, Callable, Union, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import torch
+from datasets import Dataset, DatasetDict, load_dataset
+from transformers import CLIPImageProcessor, CLIPTokenizerFast
 
 
 def load_har_dataset(dataset_name="Bingsu/Human_Action_Recognition"):
@@ -294,8 +295,8 @@ def create_class_distribution_visualizations(dataset):
         dataset: The dataset
     """
     import matplotlib.pyplot as plt
-    import plotly.express as px
     import pandas as pd
+    import plotly.express as px
 
     # Count classes
     class_count = {}

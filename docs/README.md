@@ -68,4 +68,4 @@ When contributing to the documentation, please follow these guidelines:
 - [ ] Add detailed configuration guide
 - [ ] Create troubleshooting and FAQ section
 - [ ] Add training guide with hyperparameter recommendations
-- [ ] Include benchmark results for different models and export formats 
+- [ ] Include benchmark results for different models and export formats

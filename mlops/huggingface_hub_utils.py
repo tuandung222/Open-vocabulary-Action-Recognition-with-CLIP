@@ -5,15 +5,16 @@ This module provides functions for pushing models, datasets, and metadata to
 the HuggingFace Hub.
 """
 
-import os
 import json
-import tempfile
-import torch
 import logging
-from typing import Dict, Any, List, Optional, Union
+import os
+import tempfile
 from pathlib import Path
-from huggingface_hub import HfApi, upload_folder, login, Repository
-from transformers import CLIPModel, CLIPProcessor, AutoConfig
+from typing import Any, Dict, List, Optional, Union
+
+import torch
+from huggingface_hub import HfApi, Repository, login, upload_folder
+from transformers import AutoConfig, CLIPModel, CLIPProcessor
 
 logger = logging.getLogger(__name__)
 

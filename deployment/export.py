@@ -1,9 +1,10 @@
 import os
 import time
-import torch
-import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import torch
 
 
 def export_to_onnx(
@@ -110,9 +111,9 @@ def export_to_tensorrt(
         Path to the TensorRT engine
     """
     try:
-        import tensorrt as trt
-        import pycuda.driver as cuda
         import pycuda.autoinit
+        import pycuda.driver as cuda
+        import tensorrt as trt
     except ImportError:
         raise ImportError(
             "TensorRT and/or PyCUDA not found. Install with: "
@@ -337,9 +338,9 @@ def benchmark_model(
 
     elif model_type == "tensorrt":
         try:
-            import tensorrt as trt
-            import pycuda.driver as cuda
             import pycuda.autoinit
+            import pycuda.driver as cuda
+            import tensorrt as trt
         except ImportError:
             raise ImportError("TensorRT and/or PyCUDA not found")
 

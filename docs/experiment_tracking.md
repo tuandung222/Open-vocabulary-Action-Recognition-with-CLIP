@@ -44,7 +44,7 @@ The tracking system uses the following class hierarchy:
    ```
 
 2. **Access the MLflow UI:**
-   
+
    Open your browser to `http://localhost:5000`
 
 3. **Configure environment variables (optional):**
@@ -117,7 +117,7 @@ for epoch in range(10):
         "train_loss": 0.1 - epoch * 0.01,
         "val_accuracy": 0.8 + epoch * 0.02
     }, step=epoch)
-    
+
     # Log learning curve figure
     tracker.log_figure(fig, "learning_curve.png")
 
@@ -254,4 +254,4 @@ docker run -e MLFLOW_TRACKING_URI=http://mlflow-server:5000 \
            clip-har-train
 ```
 
-The `docker-compose.yml` file already includes appropriate volume mounts and environment variables for MLflow and wandb. 
+The `docker-compose.yml` file already includes appropriate volume mounts and environment variables for MLflow and wandb.

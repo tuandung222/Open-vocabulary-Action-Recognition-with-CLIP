@@ -4,7 +4,7 @@ This guide provides instructions for developers contributing to the CLIP HAR pro
 
 ## Code Style and Formatting
 
-The CLIP HAR project follows the [PEP 8](https://peps.python.org/pep-0008/) style guide with some modifications enforced by [Black](https://black.readthedocs.io/). 
+The CLIP HAR project follows the [PEP 8](https://peps.python.org/pep-0008/) style guide with some modifications enforced by [Black](https://black.readthedocs.io/).
 
 ### Automatic Formatting with Black
 
@@ -195,4 +195,4 @@ style: format code
 refactor: refactor code without changing functionality
 test: add or modify tests
 chore: update build scripts, etc.
-``` 
+```

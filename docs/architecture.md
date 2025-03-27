@@ -170,15 +170,15 @@ The project uses two main Docker containers:
 
 For production deployment, consider:
 
-1. **Scaling**: 
+1. **Scaling**:
    - Training can scale with distributed training
    - Inference can scale with multiple containers
 
-2. **Performance**: 
+2. **Performance**:
    - Model export to ONNX or TensorRT for inference optimization
    - Batch processing for large-scale inference
 
-3. **Monitoring**: 
+3. **Monitoring**:
    - MLflow and W&B for experiment tracking
    - Container health checks for service monitoring
 
@@ -241,4 +241,4 @@ CLIP_HAR_PROJECT/
 ├── Dockerfile.app        # App/Inference container Dockerfile
 ├── dvc.yaml              # DVC pipeline definition
 └── requirements.txt      # Project dependencies
-``` 
+```

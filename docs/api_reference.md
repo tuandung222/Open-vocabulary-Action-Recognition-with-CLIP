@@ -268,4 +268,4 @@ The API does not implement rate limiting by default. For production use, conside
 
 - FastAPI middleware
 - Reverse proxy (Nginx, Traefik)
-- API gateway 
+- API gateway

@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 # Batch inference script for HAR classification using CLIP
 
-import os
-import sys
 import argparse
+import concurrent.futures
 import json
 import logging
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 import pandas as pd
 import torch
-import concurrent.futures
-from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
 from tqdm import tqdm
 
 # Import project modules

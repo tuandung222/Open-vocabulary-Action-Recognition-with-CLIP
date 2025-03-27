@@ -33,4 +33,4 @@ repos:
     hooks:
     -   id: mypy
         exclude: ^(docs/|tests/)
-        additional_dependencies: [types-requests] 
+        additional_dependencies: [types-requests]
