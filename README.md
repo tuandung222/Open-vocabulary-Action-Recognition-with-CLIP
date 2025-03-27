@@ -82,7 +82,7 @@ CLIP_HAR_PROJECT/
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/CLIP_HAR_PROJECT.git
+   git clone https://github.com/tuandung222/Open-vocabulary-Action-Recognition-with-CLIP.git
    cd CLIP_HAR_PROJECT
    ```
 

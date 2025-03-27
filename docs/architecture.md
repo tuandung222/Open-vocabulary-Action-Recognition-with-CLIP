@@ -569,222 +569,226 @@ flowchart TB
 
 The integration of all components in the CLIP HAR project:
 
-```mermaid
-flowchart TB
-    subgraph "CLIP HAR System Integration"
-    
-    subgraph "Data Management"
-    RawData[("Raw<br>Data")] --> DVC["DVC<br>Version Control"]
-    DVC --> DataProcess["Data<br>Processing"]
-    end
-    
-    subgraph "Training Infrastructure"
-    DevEnv["Development<br>Environment"] --- TrainEnv["Training<br>Environment"]
-    TrainEnv --- ExpTrack["Experiment<br>Tracking"]
-    end
-    
-    subgraph "CI/CD Pipeline"
-    GitRepo["Git<br>Repository"] --> CI["CI<br>Workflow"]
-    CI --> Tests["Automated<br>Tests"]
-    Tests --> BuildImages["Build<br>Images"]
-    end
-    
-    subgraph "Monitoring & Observability"
-    ModelMetrics["Model<br>Metrics"] --- ServiceMetrics["Service<br>Metrics"]
-    ServiceMetrics --- Alerts["Alerting<br>System"]
-    end
-    
-    subgraph "Production Environment"
-    K8s["Kubernetes<br>Cluster"] --- LoadBalancer["Load<br>Balancer"]
-    LoadBalancer --- APIEndpoints["API<br>Endpoints"]
-    end
-    
-    DataManagement --> TrainingInfrastructure
-    TrainingInfrastructure --> CI/CDPipeline
-    CI/CDPipeline --> ProductionEnvironment
-    ProductionEnvironment --> Monitoring&Observability
-    Monitoring&Observability -.-> TrainingInfrastructure
-    
-    Users["End<br>Users"] --> ProductionEnvironment
-    
-    classDef dataNode fill:#bbdefb,stroke:#1565c0,stroke-width:1px;
-    classDef trainNode fill:#c8e6c9,stroke:#2e7d32,stroke-width:1px;
-    classDef cicdNode fill:#ffe0b2,stroke:#e65100,stroke-width:1px;
-    classDef monitorNode fill:#e1bee7,stroke:#6a1b9a,stroke-width:1px;
-    classDef prodNode fill:#d1c4e9,stroke:#4527a0,stroke-width:1px;
-    classDef userNode fill:#f5f5f5,stroke:#424242,stroke-width:1px;
-    
-    class RawData,DVC,DataProcess dataNode;
-    class DevEnv,TrainEnv,ExpTrack trainNode;
-    class GitRepo,CI,Tests,BuildImages cicdNode;
-    class ModelMetrics,ServiceMetrics,Alerts monitorNode;
-    class K8s,LoadBalancer,APIEndpoints prodNode;
-    class Users userNode;
-    end
+```
++---------------------+     +------------------------+     +----------------+
+|  Data Management    |     | Training Infrastructure|     |  CI/CD Pipeline|
+|                     |     |                        |     |                |
+| +-------+  +------+ |     | +------+  +---------+ |     | +-----+  +---+ |
+| |Raw Data|->|DVC   |=|=====>|Dev   |--|Training | |     | |Git  |->|CI | |
+| +-------+  |Version| |     | |Env  |  |Env      | |     | |Repo |  |Flow| |
+|            |Control|=|=====>+------+  +---------+ |     | +-----+  +---+ |
+|            +------+ |     |            |          |     |            |   |
+|               |     |     |            |          |     |            v   |
+|               v     |     |            v          |     |        +------+|
+|          +--------+ |     |         +--------+    |     |        |Tests | |
+|          |Data    | |     |         |Experiment|  |     |        +------+|
+|          |Process | |     |         |Tracking  |  |     |            |   |
+|          +--------+ |     |         +--------+    |     |            v   |
++---------------------+     +------------------------+     |     +---------+|
+        |                            |                     |     |Build    ||
+        |                            |                     |     |Images   ||
+        |                            |                     |     +---------+|
+        |                            |                     +----------------+
+        |                            |                             |
+        |                            |                             |
+        v                            v                             v
++---------------------+     +------------------------+     +----------------+
+|  Production Env     |<----|Monitoring & Observ.    |     |                |
+|                     |     |                        |     |                |
+| +-------+  +------+ |     | +------+  +---------+ |     |                |
+| |K8s    |--|Load  | |     | |Model |--|Service  | |     |                |
+| |Cluster|  |Balancer| |     | |Metrics|  |Metrics  | |     |                |
+| +-------+  +------+ |     | +------+  +---------+ |     |                |
+|     |         |     |     |               |       |     |                |
+|     v         v     |     |               v       |     |                |
+| +--------------+    |     |         +---------+   |     |                |
+| |API Endpoints |    |     |         |Alerting |   |     |                |
+| +--------------+    |     |         |System   |   |     |                |
+|     ^               |     |         +---------+   |     |                |
++-----|---------------+     +------------------------+     |                |
+      |                                 |                  |                |
+      |                                 +------------------|----------------+
+      v                                                    |
++------------+                                             |
+|  End Users |                                             |
++------------+                                             |
+                                                           |
+     +-----------------------------------------------------|
+     |
+     v
+Feedback Loop
 ```
 
 ## CI/CD Pipeline
 
 The CI/CD pipeline automates testing, building, and deployment processes for the CLIP HAR project.
 
-```mermaid
-flowchart TB
-    subgraph "CI/CD Pipeline"
-    direction TB
-    
-    code["Code<br>Changes"] --> gh["GitHub<br>Repository"]
-    
-    gh --> prEvent["Pull Request<br>Event"]
-    gh --> pushEvent["Push to Main<br>Event"]
-    
-    prEvent --> codeQuality["Code Quality<br>Checks"]
-    codeQuality --> unitTests["Unit Tests"]
-    unitTests --> integTests["Integration<br>Tests"]
-    
-    pushEvent --> buildFlow["Build<br>Workflow"]
-    integTests --> buildFlow
-    
-    buildFlow --> buildTrain["Build Training<br>Container"]
-    buildFlow --> buildApp["Build App<br>Container"]
-    
-    buildTrain --> pushTrain["Push to<br>Registry"]
-    buildApp --> pushApp["Push to<br>Registry"]
-    
-    pushTrain --> deployDev["Deploy to<br>Development"]
-    pushApp --> deployDev
-    
-    deployDev --> evalPerf["Evaluate<br>Performance"]
-    evalPerf -->|Successful| deployProd["Deploy to<br>Production"]
-    evalPerf -->|Failed| notify["Notify<br>Team"]
-    
-    classDef codeNode fill:#bbdefb,stroke:#1565c0,stroke-width:1px;
-    classDef testNode fill:#c8e6c9,stroke:#2e7d32,stroke-width:1px;
-    classDef buildNode fill:#ffe0b2,stroke:#e65100,stroke-width:1px;
-    classDef deployNode fill:#e1bee7,stroke:#6a1b9a,stroke-width:1px;
-    classDef notifyNode fill:#ffccbc,stroke:#bf360c,stroke-width:1px;
-    
-    class code,gh,prEvent,pushEvent codeNode;
-    class codeQuality,unitTests,integTests,evalPerf testNode;
-    class buildFlow,buildTrain,buildApp,pushTrain,pushApp buildNode;
-    class deployDev,deployProd deployNode;
-    class notify notifyNode;
-    end
+```
+                         +----------------+
+                         |  Code Changes  |
+                         +-------+--------+
+                                 |
+                                 v
+                        +------------------+
+                        | GitHub Repository|
+                        +--------+---------+
+                           /            \
+                          /              \
+                         v                v
+               +----------------+  +-------------------+
+               | Pull Request   |  | Push to Main      |
+               | Event          |  | Event             |
+               +-------+--------+  +--------+----------+
+                       |                     |
+                       v                     |
+               +----------------+            |
+               | Code Quality   |            |
+               | Checks         |            |
+               +-------+--------+            |
+                       |                     |
+                       v                     |
+               +----------------+            |
+               | Unit Tests     |            |
+               +-------+--------+            |
+                       |                     |
+                       v                     v
+               +----------------+    +-------------------+
+               | Integration    |--->| Build Workflow    |
+               | Tests          |    +--------+----------+
+               +----------------+             |
+                                        /-----+-----\
+                                       /             \
+                                      v               v
+                         +----------------+  +------------------+
+                         | Build Training |  | Build App        |
+                         | Container      |  | Container        |
+                         +-------+--------+  +--------+---------+
+                                 |                     |
+                                 v                     v
+                         +----------------+  +------------------+
+                         | Push to        |  | Push to          |
+                         | Registry       |  | Registry         |
+                         +-------+--------+  +--------+---------+
+                                 |                     |
+                                 \---------+-----------/
+                                           |
+                                           v
+                                 +-------------------+
+                                 | Deploy to         |
+                                 | Development       |
+                                 +--------+----------+
+                                          |
+                                          v
+                                 +-------------------+
+                                 | Evaluate          |
+                                 | Performance       |
+                                 +--------+----------+
+                                     /        \
+                                    /          \
+                                   v            v
+                        +-----------------+  +------------------+
+                        | Deploy to       |  | Notify           |
+                        | Production      |  | Team             |
+                        +-----------------+  +------------------+
 ```
 
 ## Kubernetes Deployment Workflow
 
 The Kubernetes deployment workflow for the CLIP HAR system:
 
-```mermaid
-flowchart TB
-    subgraph "Kubernetes Deployment Workflow"
-    direction TB
-    
-    subgraph "Infrastructure"
-    direction LR
-    k8s["Kubernetes<br>Cluster"] --- namespace["CLIP HAR<br>Namespace"]
-    namespace --- configmap["ConfigMaps &<br>Secrets"]
-    end
-    
-    subgraph "Storage"
-    direction LR
-    pv["Persistent<br>Volumes"] --- pvc["Persistent Volume<br>Claims"]
-    pvc --- storage["Model Storage &<br>Datasets"]
-    end
-    
-    subgraph "Deployments"
-    direction TB
-    apiDeploy["Inference API<br>Deployment"] --> apiService["Inference API<br>Service"]
-    uiDeploy["Streamlit UI<br>Deployment"] --> uiService["Streamlit UI<br>Service"]
-    mlflowDeploy["MLflow<br>Deployment"] --> mlflowService["MLflow<br>Service"]
-    end
-    
-    subgraph "Ingress & Networking"
-    direction TB
-    ingress["Ingress<br>Controller"] --- tls["TLS<br>Termination"]
-    tls --- routing["Path-based<br>Routing"]
-    end
-    
-    subgraph "Scaling & Updates"
-    direction TB
-    hpa["Horizontal Pod<br>Autoscaler"] --- rollingUpdate["Rolling<br>Updates"]
-    rollingUpdate --- healthChecks["Health<br>Checks"]
-    end
-    
-    subgraph "Monitoring"
-    direction LR
-    prometheus["Prometheus"] --- grafana["Grafana"]
-    grafana --- alerts["Alert<br>Manager"]
-    end
-    
-    Infrastructure --> Storage
-    Storage --> Deployments
-    Deployments --> Ingress&Networking
-    Deployments --> Scaling&Updates
-    Scaling&Updates --> Monitoring
-    
-    classDef infraNode fill:#bbdefb,stroke:#1565c0,stroke-width:1px;
-    classDef storageNode fill:#c8e6c9,stroke:#2e7d32,stroke-width:1px;
-    classDef deployNode fill:#ffe0b2,stroke:#e65100,stroke-width:1px;
-    classDef netNode fill:#e1bee7,stroke:#6a1b9a,stroke-width:1px;
-    classDef scaleNode fill:#d1c4e9,stroke:#4527a0,stroke-width:1px;
-    classDef monitorNode fill:#ffccbc,stroke:#bf360c,stroke-width:1px;
-    
-    class k8s,namespace,configmap infraNode;
-    class pv,pvc,storage storageNode;
-    class apiDeploy,uiDeploy,mlflowDeploy,apiService,uiService,mlflowService deployNode;
-    class ingress,tls,routing netNode;
-    class hpa,rollingUpdate,healthChecks scaleNode;
-    class prometheus,grafana,alerts monitorNode;
-    end
+```
++--------------------------------------+
+|     Kubernetes Deployment Workflow   |
++--------------------------------------+
+         |
+         v
++------------------+     +------------------+     +------------------+
+| Infrastructure   |     | Storage          |     | Deployments      |
+|                  |     |                  |     |                  |
+| K8s Cluster      |     | Persistent       |     | Inference API    |
+| CLIP HAR Namespace|---->| Volumes         |---->| Deployment       |
+| ConfigMaps       |     | PV Claims        |     | Streamlit UI     |
+| & Secrets        |     | Model Storage    |     | MLflow Deployment|
++------------------+     +------------------+     +------------------+
+                                                         |
+                                                  /------+------\
+                                                 /               \
+                                                v                 v
+                                +------------------+     +------------------+
+                                | Ingress &        |     | Scaling &        |
+                                | Networking       |     | Updates          |
+                                |                  |     |                  |
+                                | Ingress Controller|    | Horizontal Pod   |
+                                | TLS Termination  |     | Autoscaler       |
+                                | Path-based       |     | Rolling Updates  |
+                                | Routing          |     | Health Checks    |
+                                +------------------+     +------------------+
+                                                                |
+                                                                v
+                                                        +------------------+
+                                                        | Monitoring       |
+                                                        |                  |
+                                                        | Prometheus       |
+                                                        | Grafana          |
+                                                        | Alert Manager    |
+                                                        +------------------+
 ```
 
 ## Model Performance Optimization Pipeline
 
 The model optimization pipeline improves inference performance:
 
-```mermaid
-flowchart TB
-    subgraph "Model Performance Optimization Pipeline"
-    direction TB
-    
-    trainedModel["Trained PyTorch<br>Model"] --> exportONNX["Export to<br>ONNX"]
-    
-    exportONNX --> onnxOpt["ONNX<br>Optimization"]
-    onnxOpt --> onnxQuant["ONNX<br>Quantization"]
-    
-    onnxQuant --> tensorRT["TensorRT<br>Conversion"]
-    tensorRT --> calibration["TensorRT<br>Calibration"]
-    
-    tensorRT --> cpuDeploy["CPU<br>Deployment"]
-    calibration --> gpuDeploy["GPU<br>Deployment"]
-    
-    subgraph "Benchmarking"
-    direction TB
-    latencyTest["Latency<br>Testing"] --> throughputTest["Throughput<br>Testing"]
-    throughputTest --> memoryTest["Memory<br>Usage"]
-    memoryTest --> powerTest["Power<br>Efficiency"]
-    end
-    
-    cpuDeploy --> Benchmarking
-    gpuDeploy --> Benchmarking
-    
-    Benchmarking --> optReport["Optimization<br>Report"]
-    
-    classDef modelNode fill:#bbdefb,stroke:#1565c0,stroke-width:1px;
-    classDef onnxNode fill:#c8e6c9,stroke:#2e7d32,stroke-width:1px;
-    classDef trtNode fill:#ffe0b2,stroke:#e65100,stroke-width:1px;
-    classDef deployNode fill:#e1bee7,stroke:#6a1b9a,stroke-width:1px;
-    classDef benchNode fill:#d1c4e9,stroke:#4527a0,stroke-width:1px;
-    classDef reportNode fill:#ffccbc,stroke:#bf360c,stroke-width:1px;
-    
-    class trainedModel,exportONNX modelNode;
-    class onnxOpt,onnxQuant onnxNode;
-    class tensorRT,calibration trtNode;
-    class cpuDeploy,gpuDeploy deployNode;
-    class latencyTest,throughputTest,memoryTest,powerTest benchNode;
-    class optReport reportNode;
-    end
+```
+                      +---------------------------+
+                      | Trained PyTorch Model     |
+                      +-----------+---------------+
+                                  |
+                                  v
+                      +--------------------------+
+                      | Export to ONNX           |
+                      +-----------+--------------+
+                                  |
+                                  v
+                      +--------------------------+
+                      | ONNX Optimization        |
+                      +-----------+--------------+
+                                  |
+                                  v
+                      +--------------------------+
+                      | ONNX Quantization        |
+                      +-----------+--------------+
+                                  |
+                                  v
+                      +--------------------------+
+                      | TensorRT Conversion      |------------+
+                      +-----------+--------------+            |
+                                  |                           |
+                                  v                           v
+                      +--------------------------+   +-------------------+
+                      | TensorRT Calibration     |   | CPU Deployment    |
+                      +-----------+--------------+   +--------+----------+
+                                  |                           |
+                                  v                           |
+                      +--------------------------+            |
+                      | GPU Deployment           |            |
+                      +-----------+--------------+            |
+                                  |                           |
+                                  \-----------+---------------/
+                                              |
+                                              v
+                                  +--------------------------+
+                                  | Benchmarking             |
+                                  |                          |
+                                  | Latency Testing          |
+                                  | Throughput Testing       |
+                                  | Memory Usage             |
+                                  | Power Efficiency         |
+                                  +-----------+--------------+
+                                              |
+                                              v
+                                  +--------------------------+
+                                  | Optimization Report      |
+                                  +--------------------------+
 ```
 
 ## Conclusion
