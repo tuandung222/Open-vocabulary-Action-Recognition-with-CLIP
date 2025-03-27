@@ -10,3 +10,5 @@ from CLIP_HAR_PROJECT.configs.default import (
     get_fsdp_config,
     get_single_gpu_config,
 )
+
+from CLIP_HAR_PROJECT.configs.custom_config import get_quick_test_config

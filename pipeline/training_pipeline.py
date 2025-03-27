@@ -106,6 +106,7 @@ class TrainingPipeline:
         use_mlflow: bool = True,
         use_wandb: bool = True,
         experiment_name: Optional[str] = None,
+        config: Optional[Any] = None,
         **kwargs,
     ):
         """
@@ -117,12 +118,16 @@ class TrainingPipeline:
             use_mlflow: Whether to use MLflow for tracking
             use_wandb: Whether to use wandb for tracking
             experiment_name: Experiment name for tracking
+            config: Configuration object (can be provided directly instead of config_path)
             **kwargs: Additional configuration overrides
         """
         # Load configuration
-        self.config = get_config(distributed_mode)
-        if config_path:
-            self.config = self.config.merge_from_file(config_path)
+        if config is not None:
+            self.config = config
+        else:
+            self.config = get_config(distributed_mode)
+            if config_path:
+                self.config = self.config.merge_from_file(config_path)
 
         # Update config with kwargs
         for key, value in kwargs.items():

@@ -159,8 +159,8 @@ def get_timestamp() -> str:
 
 
 def run_automated_training(
-    config_path: str,
-    output_dir: str,
+    config_path: Optional[str] = None,
+    output_dir: str = "outputs",
     dataset_version: Optional[str] = None,
     checkpoint_path: Optional[str] = None,
     push_to_hub: bool = False,
@@ -171,12 +171,13 @@ def run_automated_training(
     distributed_mode: str = "none",
     use_mlflow: bool = True,
     use_wandb: bool = True,
+    config: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Run an automated training pipeline.
 
     Args:
-        config_path: Path to the configuration file
+        config_path: Path to the configuration file (can be None if config is provided directly)
         output_dir: Directory to save outputs
         dataset_version: Version of the dataset to use
         checkpoint_path: Path to a checkpoint to continue training from
@@ -188,6 +189,7 @@ def run_automated_training(
         distributed_mode: Training mode (none, ddp, fsdp)
         use_mlflow: Whether to use MLflow for tracking
         use_wandb: Whether to use wandb for tracking
+        config: Configuration object (can be provided directly instead of config_path)
 
     Returns:
         Dictionary with training results
@@ -206,14 +208,24 @@ def run_automated_training(
         logger.info(f"Using dataset version {dataset_version} at {data_path}")
 
     # Create training pipeline
-    logger.info(f"Creating training pipeline with config {config_path}")
-    pipeline = TrainingPipeline(
-        config_path=config_path,
-        distributed_mode=distributed_mode,
-        use_mlflow=use_mlflow,
-        use_wandb=use_wandb,
-        experiment_name=experiment_name,
-    )
+    if config is None:
+        logger.info(f"Creating training pipeline with config from {config_path}")
+        pipeline = TrainingPipeline(
+            config_path=config_path,
+            distributed_mode=distributed_mode,
+            use_mlflow=use_mlflow,
+            use_wandb=use_wandb,
+            experiment_name=experiment_name,
+        )
+    else:
+        logger.info("Creating training pipeline with provided config")
+        pipeline = TrainingPipeline(
+            config=config,
+            distributed_mode=distributed_mode,
+            use_mlflow=use_mlflow,
+            use_wandb=use_wandb,
+            experiment_name=experiment_name,
+        )
 
     # Load checkpoint if specified
     if checkpoint_path:
