@@ -77,9 +77,9 @@ stages:
     frozen: true  # Only run when explicitly requested
 
   evaluate:
-    cmd: python evaluate.py --model_path outputs/model_full/best_model.pt --output_dir outputs/evaluation
+    cmd: python custom_evaluate.py --model_path outputs/model_full/best_model.pt --output_dir outputs/evaluation
     deps:
-      - evaluate.py
+      - custom_evaluate.py
       - outputs/model_full
     outs:
       - outputs/evaluation:

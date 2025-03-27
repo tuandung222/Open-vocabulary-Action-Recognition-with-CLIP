@@ -66,7 +66,7 @@ CLIP_HAR_PROJECT/
 │   ├── docker_guide.md   # Docker containerization guide
 │   ├── api_reference.md  # API reference documentation
 │   └── experiment_tracking.md  # Experiment tracking guide
-├── evaluate.py           # Evaluation script
+├── custom_evaluate.py    # Evaluation script
 ├── launch_distributed.py # Distributed training launcher
 ├── train.py              # Training script
 ├── docker/               # Docker configuration files
@@ -191,7 +191,7 @@ For a comprehensive guide covering all training scenarios, distributed training 
 Evaluate a trained model:
 
 ```bash
-python evaluate.py --model_path /path/to/checkpoint.pt --output_dir results
+python custom_evaluate.py --model_path /path/to/checkpoint.pt --output_dir results
 ```
 
 The evaluation produces:
