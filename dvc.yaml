@@ -1,0 +1,50 @@
+stages:
+  prepare_data:
+    cmd: python -m CLIP_HAR_PROJECT.data.preprocessing --output_dir data/processed
+    deps:
+      - CLIP_HAR_PROJECT/data/preprocessing.py
+    outs:
+      - data/processed
+
+  train:
+    cmd: python -m CLIP_HAR_PROJECT.train
+      --config configs/training_config.yaml
+      --output_dir models/clip_har
+    deps:
+      - CLIP_HAR_PROJECT/train.py
+      - configs/training_config.yaml
+      - data/processed
+    outs:
+      - models/clip_har/model.pt
+    metrics:
+      - models/clip_har/metrics.json:
+          cache: false
+
+  evaluate:
+    cmd: python -m CLIP_HAR_PROJECT.evaluate
+      --model_path models/clip_har/model.pt
+      --output_dir evaluation_results
+    deps:
+      - CLIP_HAR_PROJECT/evaluate.py
+      - models/clip_har/model.pt
+      - data/processed
+    metrics:
+      - evaluation_results/metrics.json:
+          cache: false
+    outs:
+      - evaluation_results/confusion_matrix.png
+      - evaluation_results/class_report.csv
+      
+  export:
+    cmd: python -m CLIP_HAR_PROJECT.deployment.export_clip_model
+      --model_path models/clip_har/model.pt
+      --config_path configs/training_config.yaml
+      --export_format all
+      --output_dir exports
+    deps:
+      - CLIP_HAR_PROJECT/deployment/export_clip_model.py
+      - models/clip_har/model.pt
+    outs:
+      - exports/model.onnx
+      - exports/model.trt:
+          persist: true 

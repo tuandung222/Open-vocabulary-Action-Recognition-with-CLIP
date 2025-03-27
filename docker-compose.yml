@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Training service
+  clip-har-train:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    image: ${DOCKER_REGISTRY:-localhost:5000}/clip-har-train:${TAG:-latest}
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs
+      - ./outputs:/app/outputs
+      - ${HOME}/.aws:/root/.aws:ro  # For S3 access if needed
+      - ${HOME}/.dvc:/root/.dvc:ro  # For DVC credentials
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Combined app and inference service
+  clip-har-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    image: ${DOCKER_REGISTRY:-localhost:5000}/clip-har-app:${TAG:-latest}
+    ports:
+      - "8501:8501"  # Streamlit UI
+      - "8000:8000"  # FastAPI endpoint
+    volumes:
+      - ./models/checkpoints:/app/models/checkpoints
+      - ./data:/app/data:ro
+      - ./evaluation_results:/app/evaluation_results
+    environment:
+      - MODEL_PATH=/app/models/checkpoints/best_model.pt
+      - PYTHONPATH=/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # Registry for storing Docker images (optional, for development)
+  registry:
+    image: registry:2
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    restart: always
+
+volumes:
+  registry-data: 
