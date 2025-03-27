@@ -567,6 +567,115 @@ def visualize_top_predictions_table(model, test_dataset, class_names, output_dir
     return table_path
 
 
+def visualize_grid_predictions(model, test_dataset, class_names, output_dir, num_samples=10, top_k=5, device="cuda"):
+    """
+    Create a grid visualization of images with top-k predictions annotated.
+    
+    Args:
+        model: The model to use for predictions
+        test_dataset: The test dataset
+        class_names: List of class names
+        output_dir: Output directory for visualizations
+        num_samples: Number of samples to visualize
+        top_k: Number of top predictions to show
+        device: Device to run the model on
+    """
+    import random
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+    import torch.nn.functional as F
+    
+    # Create visualization directory
+    vis_dir = os.path.join(output_dir, "visualizations")
+    os.makedirs(vis_dir, exist_ok=True)
+    
+    # Set model to evaluation mode
+    model.eval()
+    
+    # Select random samples
+    indices = random.sample(range(len(test_dataset)), min(num_samples, len(test_dataset)))
+    
+    # Create figure with grid layout
+    rows = 2
+    cols = 5
+    if num_samples < 10:
+        rows = (num_samples + 4) // 5
+        cols = min(5, num_samples)
+    
+    fig = plt.figure(figsize=(cols * 4, rows * 6))
+    gs = gridspec.GridSpec(rows, cols, figure=fig)
+    
+    # Process each sample
+    with torch.no_grad():
+        for i, idx in enumerate(indices):
+            if i >= rows * cols:
+                break
+                
+            # Get row and column index
+            row_idx = i // cols
+            col_idx = i % cols
+            
+            # Create subplot with image and predictions
+            ax = fig.add_subplot(gs[row_idx, col_idx])
+            
+            # Get sample
+            sample = test_dataset[idx]
+            
+            # Get image and label
+            image = sample["image"]
+            label_id = sample["label_id"]
+            true_label = class_names[label_id] if label_id < len(class_names) else f"Unknown ({label_id})"
+            
+            # Process sample through model
+            batch = {k: v.unsqueeze(0).to(device) if isinstance(v, torch.Tensor) else v for k, v in sample.items()}
+            
+            # Get logits
+            logits = model(**batch, return_loss=False)
+            
+            # Get top-k predictions
+            probs = F.softmax(logits, dim=1)
+            top_probs, top_indices = torch.topk(probs, top_k, dim=1)
+            
+            # Convert to numpy for plotting
+            top_probs = top_probs.cpu().numpy().flatten()
+            top_indices = top_indices.cpu().numpy().flatten()
+            
+            # Get class names
+            top_classes = [class_names[idx] for idx in top_indices]
+            
+            # Display image
+            ax.imshow(image)
+            ax.set_title(f"True: {true_label}", fontsize=12)
+            
+            # Prepare prediction text
+            pred_text = ""
+            for j, (cls_name, prob) in enumerate(zip(top_classes, top_probs)):
+                # Highlight the top prediction in bold
+                if j == 0:
+                    pred_text += f"1. {cls_name}: {prob:.4f} ★\n"
+                else:
+                    pred_text += f"{j+1}. {cls_name}: {prob:.4f}\n"
+            
+            # Add text box with predictions
+            props = dict(boxstyle='round', facecolor='white', alpha=0.7)
+            ax.text(0.02, 0.98, pred_text, transform=ax.transAxes, fontsize=10,
+                   verticalalignment='top', bbox=props)
+            
+            # Remove axis ticks
+            ax.axis('off')
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save figure
+    grid_path = os.path.join(vis_dir, "prediction_grid.png")
+    plt.savefig(grid_path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    
+    print(f"Saved grid visualization to {grid_path}")
+    return grid_path
+
+
 def main():
     """Main evaluation function."""
     # Parse command line arguments
@@ -658,8 +767,8 @@ def main():
     print(f"Plotting confusion matrix...")
     plot_confusion_matrix(cm_normalized, class_names, args.output_dir)
 
-    # Visualize predictions
-    print(f"Visualizing predictions...")
+    # Visualize sample predictions with top-5 scores
+    print(f"\nVisualizing sample predictions...")
     visualization_paths = visualize_top_predictions(
         model,
         datasets["test"],
@@ -669,6 +778,19 @@ def main():
         top_k=5,
         device=device
     )
+    
+    # Create grid visualization 
+    print(f"\nCreating grid visualization...")
+    grid_path = visualize_grid_predictions(
+        model,
+        datasets["test"],
+        class_names,
+        args.output_dir,
+        num_samples=10,
+        top_k=5,
+        device=device
+    )
+    visualization_paths.append(grid_path)
     
     # Generate table visualization
     print(f"\nGenerating prediction table...")
