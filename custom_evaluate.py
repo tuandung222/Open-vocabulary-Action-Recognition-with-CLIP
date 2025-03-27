@@ -8,6 +8,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import argparse
 import sys
 from pathlib import Path
+from prettytable import PrettyTable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -244,6 +245,106 @@ def visualize_predictions(
     plt.close()
 
 
+def save_metrics_summary(report_df, predictions, references, class_names, output_dir, model_dir=None):
+    """Create and save a summary table with evaluation metrics.
+    
+    Args:
+        report_df: DataFrame with classification report
+        predictions: Model predictions
+        references: Ground truth labels
+        class_names: List of class names
+        output_dir: Output directory for evaluation results
+        model_dir: Model checkpoint directory (optional)
+    """
+    # Create summary table
+    summary_table = PrettyTable()
+    summary_table.field_names = ["Metric", "Value"]
+    
+    # Add overall metrics - fix accuracy access
+    # Accuracy is stored directly in the DataFrame
+    accuracy = np.mean(predictions == references)
+    summary_table.add_row(["Accuracy", f"{accuracy:.4f}"])
+    
+    # Add macro averages
+    for metric in ["precision", "recall", "f1-score"]:
+        value = report_df.loc["macro avg", metric]
+        summary_table.add_row([f"Macro {metric.replace('-', ' ').title()}", f"{value:.4f}"])
+    
+    # Create per-class table
+    class_table = PrettyTable()
+    class_table.field_names = ["Class", "Precision", "Recall", "F1-Score", "Support"]
+    
+    # Add per-class metrics
+    for i, class_name in enumerate(class_names):
+        if class_name in report_df.index:
+            row = report_df.loc[class_name]
+            class_table.add_row([
+                class_name,
+                f"{row['precision']:.4f}",
+                f"{row['recall']:.4f}",
+                f"{row['f1-score']:.4f}",
+                f"{row['support']}"
+            ])
+    
+    # Calculate class distribution and confusion
+    class_counts = {}
+    class_correct = {}
+    
+    for ref in references:
+        if ref not in class_counts:
+            class_counts[ref] = 0
+        class_counts[ref] += 1
+    
+    for pred, ref in zip(predictions, references):
+        if ref not in class_correct:
+            class_correct[ref] = {"correct": 0, "total": 0}
+        class_correct[ref]["total"] += 1
+        if pred == ref:
+            class_correct[ref]["correct"] += 1
+    
+    # Create per-class accuracy table
+    accuracy_table = PrettyTable()
+    accuracy_table.field_names = ["Class", "Accuracy", "Correct/Total", "Distribution"]
+    
+    for label_id in sorted(class_counts.keys()):
+        class_name = class_names[label_id] if label_id < len(class_names) else f"Unknown ({label_id})"
+        acc = class_correct[label_id]["correct"] / class_correct[label_id]["total"]
+        dist = class_counts[label_id] / len(references) * 100
+        accuracy_table.add_row([
+            class_name,
+            f"{acc*100:.2f}%",
+            f"{class_correct[label_id]['correct']}/{class_correct[label_id]['total']}",
+            f"{dist:.1f}%"
+        ])
+    
+    # Save to output directory
+    with open(os.path.join(output_dir, "metrics_summary.txt"), "w") as f:
+        f.write("# Evaluation Metrics Summary\n\n")
+        f.write("## Overall Metrics\n\n")
+        f.write(summary_table.get_string())
+        f.write("\n\n## Per-Class Metrics\n\n")
+        f.write(class_table.get_string())
+        f.write("\n\n## Per-Class Accuracy\n\n")
+        f.write(accuracy_table.get_string())
+    
+    # Also save to model directory if provided
+    if model_dir:
+        model_dir = Path(model_dir)
+        if not model_dir.is_dir():
+            model_dir = model_dir.parent
+        
+        with open(os.path.join(model_dir, "evaluation_metrics.txt"), "w") as f:
+            f.write("# Evaluation Metrics Summary\n\n")
+            f.write("## Overall Metrics\n\n")
+            f.write(summary_table.get_string())
+            f.write("\n\n## Per-Class Metrics\n\n")
+            f.write(class_table.get_string())
+            f.write("\n\n## Per-Class Accuracy\n\n")
+            f.write(accuracy_table.get_string())
+    
+    return summary_table, class_table, accuracy_table
+
+
 def main():
     """Main evaluation function."""
     # Parse command line arguments
@@ -279,6 +380,11 @@ def main():
         num_workers=args.num_workers,
         device=device,
     )
+
+    # Calculate and print direct metrics
+    accuracy = np.mean(predictions == references)
+    print(f"\nDirect Metrics:")
+    print(f"Accuracy: {accuracy:.4f}")
 
     # Save raw predictions and references for debugging
     print(f"Saving raw predictions and references for debugging...")
@@ -348,6 +454,9 @@ def main():
     
     # Explicitly close all matplotlib figures
     plt.close('all')
+    
+    # Save metrics summary
+    save_metrics_summary(report_df, predictions, references, class_names, args.output_dir, args.model_path)
     
     return 0
 
