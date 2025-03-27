@@ -1,7 +1,7 @@
 site_name: CLIP HAR Documentation
 site_description: Documentation for Human Action Recognition using CLIP
-site_author: tuandunghcmut
-repo_url: https://github.com/tuandunghcmut/CLIP_HAR_PROJECT
+site_author: tuandung12092002
+repo_url: https://github.com/tuandung12092002/CLIP_HAR_PROJECT
 repo_name: CLIP_HAR_PROJECT
 
 theme:
@@ -23,7 +23,9 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/tuandunghcmut
+      link: https://github.com/tuandung12092002
+    - icon: material/text-box
+      link: https://huggingface.co/tuandunghcmut
 
 markdown_extensions:
   - pymdownx.highlight

@@ -103,7 +103,7 @@ jobs:
       id: meta-train
       uses: docker/metadata-action@v4
       with:
-        images: tuandunghcmut/clip-har-train
+        images: tuandung12092002/clip-har-train
         tags: |
           type=ref,event=branch
           type=semver,pattern={{version}}
@@ -117,14 +117,14 @@ jobs:
         push: true
         tags: ${{ steps.meta-train.outputs.tags }}
         labels: ${{ steps.meta-train.outputs.labels }}
-        cache-from: type=registry,ref=tuandunghcmut/clip-har-train:buildcache
-        cache-to: type=registry,ref=tuandunghcmut/clip-har-train:buildcache,mode=max
+        cache-from: type=registry,ref=tuandung12092002/clip-har-train:buildcache
+        cache-to: type=registry,ref=tuandung12092002/clip-har-train:buildcache,mode=max
     
     - name: Extract metadata for app image
       id: meta-app
       uses: docker/metadata-action@v4
       with:
-        images: tuandunghcmut/clip-har-app
+        images: tuandung12092002/clip-har-app
         tags: |
           type=ref,event=branch
           type=semver,pattern={{version}}
@@ -138,8 +138,8 @@ jobs:
         push: true
         tags: ${{ steps.meta-app.outputs.tags }}
         labels: ${{ steps.meta-app.outputs.labels }}
-        cache-from: type=registry,ref=tuandunghcmut/clip-har-app:buildcache
-        cache-to: type=registry,ref=tuandunghcmut/clip-har-app:buildcache,mode=max
+        cache-from: type=registry,ref=tuandung12092002/clip-har-app:buildcache
+        cache-to: type=registry,ref=tuandung12092002/clip-har-app:buildcache,mode=max
 
   deploy-docs:
     name: Deploy Documentation

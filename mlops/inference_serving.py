@@ -1,915 +1,996 @@
 """
-Inference serving module for CLIP HAR Project.
+Model inference serving module for the CLIP HAR project.
 
-This module provides utilities for serving CLIP HAR models including:
-- Model adapters (PyTorch, ONNX, TorchScript)
-- REST API server
-- Client for making inference requests
+This module provides a FastAPI-based model serving API with support
+for multiple model formats including PyTorch, ONNX, and TensorRT.
 """
 
-import base64
+import os
 import io
+import base64
 import json
 import logging
-import os
-import time
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-import numpy as np
-import requests
-import torch
-import torchvision.transforms as T
 import uvicorn
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+import numpy as np
+import torch
+from typing import Dict, List, Optional, Tuple, Union, Any
+from enum import Enum
+from abc import ABC, abstractmethod
 from PIL import Image
-from pydantic import BaseModel
-from torch import nn
+import requests
+from pydantic import BaseModel, Field
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Form
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-# Optional imports for model optimization
-try:
-    import onnx
-    import onnxruntime as ort
-
-    ONNX_AVAILABLE = True
-except ImportError:
-    ONNX_AVAILABLE = False
-
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Check if ONNX Runtime is available
+try:
+    import onnxruntime as ort
+    ONNX_AVAILABLE = True
+except ImportError:
+    logger.warning("ONNX Runtime not available. ONNX models will not be supported.")
+    ONNX_AVAILABLE = False
 
-class InferenceRequest(BaseModel):
-    """Model for handling inference requests."""
-
-    image_data: Optional[str] = None
-    image_url: Optional[str] = None
-    video_url: Optional[str] = None
-    top_k: Optional[int] = 5
-
-
-class InferenceResult(BaseModel):
-    """Model for inference results."""
-
-    predictions: List[Dict[str, Any]]
-    inference_time: float
-    model_name: str
+# Check if TensorRT is available
+try:
+    import tensorrt as trt
+    from CLIP_HAR_PROJECT.deployment.optimization import TensorRTOptimizer
+    TENSORRT_AVAILABLE = True
+except ImportError:
+    logger.warning("TensorRT not available. TensorRT models will not be supported.")
+    TENSORRT_AVAILABLE = False
 
 
-class ModelAdapter:
-    """Base class for model adapters."""
+class ModelType(str, Enum):
+    """Supported model types for inference."""
+    PYTORCH = "pytorch"
+    ONNX = "onnx"
+    TORCHSCRIPT = "torchscript"
+    TENSORRT = "tensorrt"
 
-    def __init__(
-        self,
-        model_path: str,
-        class_names: Optional[List[str]] = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
-    ):
+
+class ImageInput(BaseModel):
+    """Input for image-based prediction."""
+    image_data: Optional[str] = Field(None, description="Base64 encoded image data")
+    image_url: Optional[str] = Field(None, description="URL to an image")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "image_data": "base64_encoded_image_data_here",
+                "image_url": "https://example.com/image.jpg"
+            }
+        }
+
+
+class PredictionOutput(BaseModel):
+    """Output for prediction requests."""
+    predictions: List[Dict[str, Any]] = Field(
+        ..., description="List of predictions with class name and score"
+    )
+    model_info: Dict[str, Any] = Field(
+        ..., description="Information about the model used for inference"
+    )
+    inference_time_ms: float = Field(
+        ..., description="Time taken for inference in milliseconds"
+    )
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "predictions": [
+                    {"class_name": "running", "score": 0.92},
+                    {"class_name": "walking", "score": 0.05},
+                    {"class_name": "jumping", "score": 0.03}
+                ],
+                "model_info": {
+                    "model_type": "onnx",
+                    "model_name": "clip_har_v1"
+                },
+                "inference_time_ms": 15.5
+            }
+        }
+
+
+class ModelAdapter(ABC):
+    """Abstract base class for model adapters."""
+    
+    @abstractmethod
+    def load_model(self, model_path: str) -> None:
         """
-        Initialize the model adapter.
-
+        Load a model from a file.
+        
         Args:
-            model_path: Path to the model file or directory
+            model_path: Path to the model file
+        """
+        pass
+    
+    @abstractmethod
+    def preprocess(self, image: Image.Image) -> Any:
+        """
+        Preprocess an image for model input.
+        
+        Args:
+            image: PIL Image to preprocess
+            
+        Returns:
+            Preprocessed image in the format expected by the model
+        """
+        pass
+    
+    @abstractmethod
+    def predict(self, inputs: Any) -> np.ndarray:
+        """
+        Run inference on the preprocessed inputs.
+        
+        Args:
+            inputs: Preprocessed inputs
+            
+        Returns:
+            Model predictions as a numpy array
+        """
+        pass
+    
+    @abstractmethod
+    def postprocess(self, outputs: np.ndarray, class_names: List[str], top_k: int = 5) -> List[Dict[str, Any]]:
+        """
+        Postprocess model outputs to human-readable predictions.
+        
+        Args:
+            outputs: Model output
             class_names: List of class names
-            device: Device to run inference on
-        """
-        self.model_path = model_path
-        self.device = device
-        self.class_names = class_names or []
-        self.model = None
-        self.transform = self._get_transforms()
-
-        # Load model
-        self.load_model()
-
-    def _get_transforms(self):
-        """Get transforms for preprocessing inputs."""
-        # Default transforms for CLIP models
-        return T.Compose(
-            [
-                T.Resize(224),
-                T.CenterCrop(224),
-                T.ToTensor(),
-                T.Normalize(
-                    mean=[0.48145466, 0.4578275, 0.40821073],
-                    std=[0.26862954, 0.26130258, 0.27577711],
-                ),
-            ]
-        )
-
-    def load_model(self):
-        """Load the model."""
-        raise NotImplementedError("Subclasses must implement load_model")
-
-    def preprocess(self, image):
-        """
-        Preprocess the input image.
-
-        Args:
-            image: PIL Image or numpy array
-
-        Returns:
-            Processed input tensor
-        """
-        if isinstance(image, np.ndarray):
-            image = Image.fromarray(image)
-
-        if not isinstance(image, Image.Image):
-            raise ValueError(
-                f"Input must be PIL Image or numpy array, got {type(image)}"
-            )
-
-        return self.transform(image).unsqueeze(0).to(self.device)
-
-    def predict(self, inputs, top_k=5):
-        """
-        Run inference on inputs.
-
-        Args:
-            inputs: Input tensor
             top_k: Number of top predictions to return
-
+            
         Returns:
-            Dictionary of predictions with class names and scores
+            List of dictionaries with class names and scores
         """
-        raise NotImplementedError("Subclasses must implement predict")
-
-    def predict_from_image(self, image, top_k=5):
-        """
-        Run inference on a single image.
-
-        Args:
-            image: PIL Image or numpy array
-            top_k: Number of top predictions to return
-
-        Returns:
-            Tuple of (predictions, inference_time)
-        """
-        start_time = time.time()
-
-        # Preprocess
-        inputs = self.preprocess(image)
-
-        # Run inference
-        predictions = self.predict(inputs, top_k=top_k)
-
-        inference_time = time.time() - start_time
-
-        return predictions, inference_time
+        pass
 
 
 class PyTorchAdapter(ModelAdapter):
     """Adapter for PyTorch models."""
-
-    def load_model(self):
-        """Load PyTorch model."""
+    
+    def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+        """
+        Initialize the PyTorch adapter.
+        
+        Args:
+            device: Device to run inference on
+        """
+        self.device = torch.device(device)
+        self.model = None
+        self.input_size = (224, 224)
+        self.mean = [0.48145466, 0.4578275, 0.40821073]
+        self.std = [0.26862954, 0.26130258, 0.27577711]
+    
+    def load_model(self, model_path: str) -> None:
+        """
+        Load a PyTorch model from a file.
+        
+        Args:
+            model_path: Path to the model file
+        """
         try:
-            # Handle different types of model files
-            if os.path.isdir(self.model_path):
-                # Try to load as a Hugging Face model
-                from transformers import CLIPModel, CLIPProcessor
-
-                try:
-                    self.model = CLIPModel.from_pretrained(self.model_path)
-                    self.processor = CLIPProcessor.from_pretrained(self.model_path)
-                    self.is_hf_model = True
-                    logger.info(f"Loaded HuggingFace CLIP model from {self.model_path}")
-                    return
-                except Exception as e:
-                    logger.warning(f"Failed to load as HuggingFace model: {e}")
-                    self.is_hf_model = False
-
-            # Try to load as a regular PyTorch model
-            checkpoint = torch.load(self.model_path, map_location=self.device)
-
-            # Handle different checkpoint formats
-            if isinstance(checkpoint, dict):
-                if "model" in checkpoint:
-                    # Standard format with model state dict
-                    model_state = checkpoint["model"]
-
-                    # Try to get model class from checkpoint
-                    model_class = checkpoint.get("model_class", None)
-                    if model_class is not None:
-                        # If the checkpoint contains model class info, use it
-                        try:
-                            if isinstance(model_class, str):
-                                # Import the class dynamically
-                                module_path, class_name = model_class.rsplit(".", 1)
-                                module = __import__(module_path, fromlist=[class_name])
-                                model_class = getattr(module, class_name)
-
-                            # Create model instance
-                            self.model = model_class()
-                            self.model.load_state_dict(model_state)
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to instantiate model using class from checkpoint: {e}"
-                            )
-
-                            # Fallback to default model
-                            from CLIP_HAR_PROJECT.model.clip_classifier import (
-                                CLIPClassifier,
-                            )
-
-                            self.model = CLIPClassifier()
-                            self.model.load_state_dict(model_state)
-                    else:
-                        # No model class info, use default
-                        from CLIP_HAR_PROJECT.model.clip_classifier import (
-                            CLIPClassifier,
-                        )
-
-                        self.model = CLIPClassifier()
-                        self.model.load_state_dict(model_state)
-
-                elif "state_dict" in checkpoint:
-                    # PyTorch Lightning format
-                    model_state = checkpoint["state_dict"]
-
-                    # Import the default model
-                    from CLIP_HAR_PROJECT.model.clip_classifier import CLIPClassifier
-
-                    self.model = CLIPClassifier()
-
-                    # Sometimes lightning adds 'model.' prefix
-                    if all(k.startswith("model.") for k in model_state.keys()):
-                        # Remove the 'model.' prefix
-                        model_state = {k[6:]: v for k, v in model_state.items()}
-
-                    self.model.load_state_dict(model_state)
-
-                elif "model_state_dict" in checkpoint:
-                    # Another common format
-                    model_state = checkpoint["model_state_dict"]
-
-                    # Import the default model
-                    from CLIP_HAR_PROJECT.model.clip_classifier import CLIPClassifier
-
-                    self.model = CLIPClassifier()
-                    self.model.load_state_dict(model_state)
-
-                else:
-                    # Try loading the whole dict as state dict
-                    from CLIP_HAR_PROJECT.model.clip_classifier import CLIPClassifier
-
-                    self.model = CLIPClassifier()
-                    self.model.load_state_dict(checkpoint)
-
-            else:
-                # Assume checkpoint is the model itself
-                self.model = checkpoint
-
-            # Move model to device
-            self.model = self.model.to(self.device)
-
-            # Set model to evaluation mode
+            logger.info(f"Loading PyTorch model from {model_path}")
+            self.model = torch.load(model_path, map_location=self.device)
             self.model.eval()
-
-            # Try to load class names from the checkpoint
-            if isinstance(checkpoint, dict) and "class_names" in checkpoint:
-                self.class_names = checkpoint["class_names"]
-
-            logger.info(f"Loaded PyTorch model from {self.model_path}")
-
+            logger.info("PyTorch model loaded successfully")
         except Exception as e:
-            logger.error(f"Failed to load PyTorch model: {e}", exc_info=True)
-            raise
-
-    def predict(self, inputs, top_k=5):
-        """Run inference with PyTorch model."""
+            logger.error(f"Failed to load PyTorch model: {e}")
+            raise RuntimeError(f"Failed to load PyTorch model: {e}")
+    
+    def preprocess(self, image: Image.Image) -> torch.Tensor:
+        """
+        Preprocess an image for model input.
+        
+        Args:
+            image: PIL Image to preprocess
+            
+        Returns:
+            Preprocessed image as a PyTorch tensor
+        """
+        from torchvision import transforms
+        
+        # Resize and normalize image
+        transform = transforms.Compose([
+            transforms.Resize(self.input_size, antialias=True),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=self.mean, std=self.std)
+        ])
+        
+        # Apply transformations
+        tensor = transform(image).unsqueeze(0).to(self.device)
+        return tensor
+    
+    def predict(self, inputs: torch.Tensor) -> np.ndarray:
+        """
+        Run inference on the preprocessed inputs.
+        
+        Args:
+            inputs: Preprocessed inputs as a PyTorch tensor
+            
+        Returns:
+            Model predictions as a numpy array
+        """
         with torch.no_grad():
-            if hasattr(self, "is_hf_model") and self.is_hf_model:
-                # For HuggingFace CLIP models
-                text_inputs = torch.cat(
-                    [
-                        self.processor.tokenizer(
-                            class_name, return_tensors="pt", padding=True
-                        ).to(self.device)["input_ids"]
-                        for class_name in self.class_names
-                    ]
-                )
-
-                image_features = self.model.get_image_features(pixel_values=inputs)
-                text_features = self.model.get_text_features(input_ids=text_inputs)
-
-                # Normalize features
-                image_features = image_features / image_features.norm(
-                    dim=-1, keepdim=True
-                )
-                text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-
-                # Compute similarity scores
-                similarity = 100 * torch.matmul(image_features, text_features.T)
-
-                # Get top predictions
-                values, indices = similarity[0].topk(min(top_k, len(self.class_names)))
-
-                predictions = []
-                for i, (score, idx) in enumerate(
-                    zip(values.cpu().numpy(), indices.cpu().numpy())
-                ):
-                    predictions.append(
-                        {
-                            "rank": i + 1,
-                            "class_id": int(idx),
-                            "class_name": self.class_names[idx]
-                            if idx < len(self.class_names)
-                            else f"Class {idx}",
-                            "score": float(score),
-                        }
-                    )
-
-                return predictions
-            else:
-                # For custom models
-                outputs = self.model(inputs)
-
-                # Handle different output formats
-                if isinstance(outputs, tuple):
-                    # Some models return (logits, features)
-                    logits = outputs[0]
-                else:
-                    logits = outputs
-
-                # Get probabilities
-                if logits.shape[1] == 1:
-                    # Binary classification
-                    probs = torch.sigmoid(logits)
-                    values, indices = probs.topk(min(top_k, probs.shape[1]))
-                else:
-                    # Multi-class classification
-                    probs = torch.softmax(logits, dim=1)
-                    values, indices = probs.topk(min(top_k, probs.shape[1]))
-
-                predictions = []
-                for i, (score, idx) in enumerate(
-                    zip(values[0].cpu().numpy(), indices[0].cpu().numpy())
-                ):
-                    predictions.append(
-                        {
-                            "rank": i + 1,
-                            "class_id": int(idx),
-                            "class_name": self.class_names[idx]
-                            if idx < len(self.class_names)
-                            else f"Class {idx}",
-                            "score": float(score),
-                        }
-                    )
-
-                return predictions
+            outputs = self.model(inputs)
+            
+            # Apply softmax to get probabilities
+            probs = torch.nn.functional.softmax(outputs, dim=1)
+            
+            return probs.cpu().numpy()
+    
+    def postprocess(
+        self, outputs: np.ndarray, class_names: List[str], top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Postprocess model outputs to human-readable predictions.
+        
+        Args:
+            outputs: Model output as a numpy array
+            class_names: List of class names
+            top_k: Number of top predictions to return
+            
+        Returns:
+            List of dictionaries with class names and scores
+        """
+        # Get top-k predictions
+        top_indices = np.argsort(outputs[0])[::-1][:top_k]
+        
+        # Create predictions list
+        predictions = [
+            {
+                "class_name": class_names[idx],
+                "score": float(outputs[0][idx])
+            }
+            for idx in top_indices
+        ]
+        
+        return predictions
 
 
 class ONNXAdapter(ModelAdapter):
     """Adapter for ONNX models."""
-
-    def __init__(self, *args, **kwargs):
-        """Initialize ONNX adapter."""
+    
+    def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+        """
+        Initialize the ONNX adapter.
+        
+        Args:
+            device: Device to run inference on
+        """
         if not ONNX_AVAILABLE:
-            raise ImportError(
-                "ONNX and ONNXRuntime are required for ONNXAdapter. "
-                "Install with: pip install onnx onnxruntime"
-            )
-        super().__init__(*args, **kwargs)
-
-    def load_model(self):
-        """Load ONNX model."""
+            raise ImportError("ONNX Runtime is not available. Please install onnxruntime or onnxruntime-gpu.")
+        
+        self.device = device
+        
+        # Configure ONNX runtime session
+        if self.device == "cuda" and "CUDAExecutionProvider" in ort.get_available_providers():
+            self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        else:
+            self.providers = ["CPUExecutionProvider"]
+            
+        logger.info(f"Using ONNX Runtime with providers: {self.providers}")
+        
+        self.session = None
+        self.input_name = None
+        self.output_name = None
+        self.input_size = (224, 224)
+        self.mean = [0.48145466, 0.4578275, 0.40821073]
+        self.std = [0.26862954, 0.26130258, 0.27577711]
+    
+    def load_model(self, model_path: str) -> None:
+        """
+        Load an ONNX model from a file.
+        
+        Args:
+            model_path: Path to the model file
+        """
         try:
-            # Check if model exists
-            if not os.path.exists(self.model_path):
-                raise FileNotFoundError(f"Model file not found: {self.model_path}")
-
-            # Create ONNX session
-            if self.device == "cuda" and ort.get_device() == "GPU":
-                # Use GPU for inference
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                # Use CPU for inference
-                providers = ["CPUExecutionProvider"]
-
-            self.session = ort.InferenceSession(self.model_path, providers=providers)
-
-            # Get model inputs and outputs
+            logger.info(f"Loading ONNX model from {model_path}")
+            self.session = ort.InferenceSession(model_path, providers=self.providers)
+            
+            # Get input and output names
             self.input_name = self.session.get_inputs()[0].name
             self.output_name = self.session.get_outputs()[0].name
-
-            logger.info(f"Loaded ONNX model from {self.model_path}")
-
-            # Try to load class names from metadata
-            try:
-                metadata = onnx.load(self.model_path).metadata_props
-                for prop in metadata:
-                    if prop.key == "class_names":
-                        self.class_names = json.loads(prop.value)
-                        break
-            except Exception as e:
-                logger.warning(f"Failed to load class names from ONNX metadata: {e}")
-
+            
+            logger.info(f"ONNX model loaded successfully with input: {self.input_name}, output: {self.output_name}")
         except Exception as e:
-            logger.error(f"Failed to load ONNX model: {e}", exc_info=True)
-            raise
-
-    def predict(self, inputs, top_k=5):
-        """Run inference with ONNX model."""
-        # Convert to numpy for ONNX
-        inputs_np = inputs.cpu().numpy()
-
+            logger.error(f"Failed to load ONNX model: {e}")
+            raise RuntimeError(f"Failed to load ONNX model: {e}")
+    
+    def preprocess(self, image: Image.Image) -> np.ndarray:
+        """
+        Preprocess an image for model input.
+        
+        Args:
+            image: PIL Image to preprocess
+            
+        Returns:
+            Preprocessed image as a numpy array
+        """
+        # Resize image
+        image = image.resize(self.input_size)
+        
+        # Convert to numpy array
+        img_array = np.array(image).astype(np.float32) / 255.0
+        
+        # Apply normalization
+        for i in range(3):
+            img_array[:, :, i] = (img_array[:, :, i] - self.mean[i]) / self.std[i]
+        
+        # Rearrange from HWC to CHW
+        img_array = img_array.transpose(2, 0, 1)
+        
+        # Add batch dimension
+        img_array = np.expand_dims(img_array, axis=0)
+        
+        return img_array
+    
+    def predict(self, inputs: np.ndarray) -> np.ndarray:
+        """
+        Run inference on the preprocessed inputs.
+        
+        Args:
+            inputs: Preprocessed inputs as a numpy array
+            
+        Returns:
+            Model predictions as a numpy array
+        """
         # Run inference
-        outputs = self.session.run([self.output_name], {self.input_name: inputs_np})
-        logits = outputs[0]
-
-        # Get probabilities
-        if logits.shape[1] == 1:
-            # Binary classification
-            probs = 1 / (1 + np.exp(-logits))  # sigmoid
-        else:
-            # Multi-class classification
-            probs = np.exp(logits) / np.sum(
-                np.exp(logits), axis=1, keepdims=True
-            )  # softmax
-
-        # Get top predictions
-        indices = np.argsort(probs[0])[::-1][:top_k]
-        values = probs[0][indices]
-
-        predictions = []
-        for i, (idx, score) in enumerate(zip(indices, values)):
-            predictions.append(
-                {
-                    "rank": i + 1,
-                    "class_id": int(idx),
-                    "class_name": self.class_names[idx]
-                    if idx < len(self.class_names)
-                    else f"Class {idx}",
-                    "score": float(score),
-                }
-            )
-
+        outputs = self.session.run([self.output_name], {self.input_name: inputs})
+        
+        # Apply softmax to get probabilities
+        probs = self._softmax(outputs[0])
+        
+        return probs
+    
+    def postprocess(
+        self, outputs: np.ndarray, class_names: List[str], top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Postprocess model outputs to human-readable predictions.
+        
+        Args:
+            outputs: Model output as a numpy array
+            class_names: List of class names
+            top_k: Number of top predictions to return
+            
+        Returns:
+            List of dictionaries with class names and scores
+        """
+        # Get top-k predictions
+        top_indices = np.argsort(outputs[0])[::-1][:top_k]
+        
+        # Create predictions list
+        predictions = [
+            {
+                "class_name": class_names[idx],
+                "score": float(outputs[0][idx])
+            }
+            for idx in top_indices
+        ]
+        
         return predictions
+    
+    def _softmax(self, x: np.ndarray) -> np.ndarray:
+        """Apply softmax to an array."""
+        e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+        return e_x / e_x.sum(axis=1, keepdims=True)
 
 
 class TorchScriptAdapter(ModelAdapter):
     """Adapter for TorchScript models."""
-
-    def load_model(self):
-        """Load TorchScript model."""
+    
+    def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+        """
+        Initialize the TorchScript adapter.
+        
+        Args:
+            device: Device to run inference on
+        """
+        self.device = torch.device(device)
+        self.model = None
+        self.input_size = (224, 224)
+        self.mean = [0.48145466, 0.4578275, 0.40821073]
+        self.std = [0.26862954, 0.26130258, 0.27577711]
+    
+    def load_model(self, model_path: str) -> None:
+        """
+        Load a TorchScript model from a file.
+        
+        Args:
+            model_path: Path to the model file
+        """
         try:
-            # Load model
-            self.model = torch.jit.load(self.model_path, map_location=self.device)
+            logger.info(f"Loading TorchScript model from {model_path}")
+            self.model = torch.jit.load(model_path, map_location=self.device)
             self.model.eval()
-
-            logger.info(f"Loaded TorchScript model from {self.model_path}")
-
-            # Try to load class names
-            model_dir = os.path.dirname(self.model_path)
-            class_names_file = os.path.join(model_dir, "class_names.json")
-            if os.path.exists(class_names_file):
-                with open(class_names_file, "r") as f:
-                    self.class_names = json.load(f)
-
+            logger.info("TorchScript model loaded successfully")
         except Exception as e:
-            logger.error(f"Failed to load TorchScript model: {e}", exc_info=True)
-            raise
-
-    def predict(self, inputs, top_k=5):
-        """Run inference with TorchScript model."""
+            logger.error(f"Failed to load TorchScript model: {e}")
+            raise RuntimeError(f"Failed to load TorchScript model: {e}")
+    
+    def preprocess(self, image: Image.Image) -> torch.Tensor:
+        """
+        Preprocess an image for model input.
+        
+        Args:
+            image: PIL Image to preprocess
+            
+        Returns:
+            Preprocessed image as a PyTorch tensor
+        """
+        from torchvision import transforms
+        
+        # Resize and normalize image
+        transform = transforms.Compose([
+            transforms.Resize(self.input_size, antialias=True),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=self.mean, std=self.std)
+        ])
+        
+        # Apply transformations
+        tensor = transform(image).unsqueeze(0).to(self.device)
+        return tensor
+    
+    def predict(self, inputs: torch.Tensor) -> np.ndarray:
+        """
+        Run inference on the preprocessed inputs.
+        
+        Args:
+            inputs: Preprocessed inputs as a PyTorch tensor
+            
+        Returns:
+            Model predictions as a numpy array
+        """
         with torch.no_grad():
             outputs = self.model(inputs)
-
-            # Handle different output formats
-            if isinstance(outputs, tuple):
-                # Some models return (logits, features)
-                logits = outputs[0]
-            else:
-                logits = outputs
-
-            # Get probabilities
-            if logits.shape[1] == 1:
-                # Binary classification
-                probs = torch.sigmoid(logits)
-            else:
-                # Multi-class classification
-                probs = torch.softmax(logits, dim=1)
-
-            # Get top predictions
-            values, indices = probs.topk(min(top_k, probs.shape[1]))
-
-            predictions = []
-            for i, (score, idx) in enumerate(
-                zip(values[0].cpu().numpy(), indices[0].cpu().numpy())
-            ):
-                predictions.append(
-                    {
-                        "rank": i + 1,
-                        "class_id": int(idx),
-                        "class_name": self.class_names[idx]
-                        if idx < len(self.class_names)
-                        else f"Class {idx}",
-                        "score": float(score),
-                    }
-                )
-
-            return predictions
+            
+            # Apply softmax to get probabilities
+            probs = torch.nn.functional.softmax(outputs, dim=1)
+            
+            return probs.cpu().numpy()
+    
+    def postprocess(
+        self, outputs: np.ndarray, class_names: List[str], top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Postprocess model outputs to human-readable predictions.
+        
+        Args:
+            outputs: Model output as a numpy array
+            class_names: List of class names
+            top_k: Number of top predictions to return
+            
+        Returns:
+            List of dictionaries with class names and scores
+        """
+        # Get top-k predictions
+        top_indices = np.argsort(outputs[0])[::-1][:top_k]
+        
+        # Create predictions list
+        predictions = [
+            {
+                "class_name": class_names[idx],
+                "score": float(outputs[0][idx])
+            }
+            for idx in top_indices
+        ]
+        
+        return predictions
 
 
-class InferenceService:
-    """Service for running inference with different model adapters."""
+class TensorRTAdapter(ModelAdapter):
+    """Adapter for TensorRT models."""
+    
+    def __init__(self):
+        """Initialize the TensorRT adapter."""
+        if not TENSORRT_AVAILABLE:
+            raise ImportError("TensorRT is not available. Please install TensorRT and PyCUDA.")
+        
+        self.optimizer = None
+        self.input_name = None
+        self.input_size = (224, 224)
+        self.mean = [0.48145466, 0.4578275, 0.40821073]
+        self.std = [0.26862954, 0.26130258, 0.27577711]
+    
+    def load_model(self, model_path: str) -> None:
+        """
+        Load a TensorRT engine from a file.
+        
+        Args:
+            model_path: Path to the TensorRT engine file
+        """
+        try:
+            logger.info(f"Loading TensorRT engine from {model_path}")
+            self.optimizer = TensorRTOptimizer(max_batch_size=1)
+            self.optimizer.load_engine(model_path)
+            self.optimizer.prepare_inference()
+            
+            # Assuming the first binding is the input
+            for binding_idx in range(self.optimizer.engine.num_bindings):
+                if self.optimizer.engine.binding_is_input(binding_idx):
+                    self.input_name = self.optimizer.engine.get_binding_name(binding_idx)
+                    break
+            
+            logger.info(f"TensorRT engine loaded successfully with input: {self.input_name}")
+        except Exception as e:
+            logger.error(f"Failed to load TensorRT engine: {e}")
+            raise RuntimeError(f"Failed to load TensorRT engine: {e}")
+    
+    def preprocess(self, image: Image.Image) -> np.ndarray:
+        """
+        Preprocess an image for model input.
+        
+        Args:
+            image: PIL Image to preprocess
+            
+        Returns:
+            Preprocessed image as a numpy array
+        """
+        # Resize image
+        image = image.resize(self.input_size)
+        
+        # Convert to numpy array
+        img_array = np.array(image).astype(np.float32) / 255.0
+        
+        # Apply normalization
+        for i in range(3):
+            img_array[:, :, i] = (img_array[:, :, i] - self.mean[i]) / self.std[i]
+        
+        # Rearrange from HWC to CHW
+        img_array = img_array.transpose(2, 0, 1)
+        
+        # Add batch dimension
+        img_array = np.expand_dims(img_array, axis=0)
+        
+        return img_array
+    
+    def predict(self, inputs: np.ndarray) -> np.ndarray:
+        """
+        Run inference on the preprocessed inputs.
+        
+        Args:
+            inputs: Preprocessed inputs as a numpy array
+            
+        Returns:
+            Model predictions as a numpy array
+        """
+        # Prepare inputs dictionary
+        input_dict = {self.input_name: inputs}
+        
+        # Run inference
+        outputs = self.optimizer.infer(input_dict)
+        
+        # Get the first output (assuming there's only one)
+        output_name = list(outputs.keys())[0]
+        output_array = outputs[output_name]
+        
+        # Apply softmax to get probabilities
+        probs = self._softmax(output_array)
+        
+        return probs
+    
+    def postprocess(
+        self, outputs: np.ndarray, class_names: List[str], top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Postprocess model outputs to human-readable predictions.
+        
+        Args:
+            outputs: Model output as a numpy array
+            class_names: List of class names
+            top_k: Number of top predictions to return
+            
+        Returns:
+            List of dictionaries with class names and scores
+        """
+        # Get top-k predictions
+        top_indices = np.argsort(outputs[0])[::-1][:top_k]
+        
+        # Create predictions list
+        predictions = [
+            {
+                "class_name": class_names[idx],
+                "score": float(outputs[0][idx])
+            }
+            for idx in top_indices
+        ]
+        
+        return predictions
+    
+    def _softmax(self, x: np.ndarray) -> np.ndarray:
+        """Apply softmax to an array."""
+        e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+        return e_x / e_x.sum(axis=1, keepdims=True)
 
+
+class ModelServer:
+    """Server for model inference."""
+    
     def __init__(
         self,
         model_path: str,
-        model_type: str = "pytorch",
+        model_type: ModelType,
         class_names: Optional[List[str]] = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        class_names_path: Optional[str] = None,
+        top_k: int = 5,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu"
     ):
         """
-        Initialize the inference service.
-
+        Initialize the model server.
+        
         Args:
-            model_path: Path to the model file or directory
-            model_type: Type of model (pytorch, onnx, torchscript)
+            model_path: Path to the model file
+            model_type: Type of the model
             class_names: List of class names
+            class_names_path: Path to a JSON file with class names
+            top_k: Number of top predictions to return
             device: Device to run inference on
         """
         self.model_path = model_path
-        self.model_type = model_type.lower()
-        self.class_names = class_names
+        self.model_type = model_type
+        self.top_k = top_k
         self.device = device
-        self.model_name = os.path.basename(model_path)
-
-        # Load model adapter
-        self._load_adapter()
-
-    def _load_adapter(self):
-        """Load the appropriate model adapter."""
-        if self.model_type == "pytorch":
-            self.adapter = PyTorchAdapter(
-                model_path=self.model_path,
-                class_names=self.class_names,
-                device=self.device,
-            )
-        elif self.model_type == "onnx":
-            self.adapter = ONNXAdapter(
-                model_path=self.model_path,
-                class_names=self.class_names,
-                device=self.device,
-            )
-        elif self.model_type == "torchscript":
-            self.adapter = TorchScriptAdapter(
-                model_path=self.model_path,
-                class_names=self.class_names,
-                device=self.device,
-            )
+        
+        # Load class names
+        if class_names:
+            self.class_names = class_names
+        elif class_names_path:
+            try:
+                with open(class_names_path, "r") as f:
+                    self.class_names = json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load class names from {class_names_path}: {e}")
+                raise ValueError(f"Failed to load class names: {e}")
         else:
-            raise ValueError(f"Unsupported model type: {self.model_type}")
-
-    def predict_from_image(self, image, top_k=5) -> Tuple[List[Dict[str, Any]], float]:
+            logger.warning("No class names provided. Using indices as class names.")
+            self.class_names = [str(i) for i in range(1000)]  # Default to 1000 classes
+        
+        # Create model adapter based on model type
+        if model_type == ModelType.PYTORCH:
+            self.adapter = PyTorchAdapter(device=device)
+        elif model_type == ModelType.ONNX:
+            if not ONNX_AVAILABLE:
+                raise ImportError("ONNX Runtime is not available. Please install onnxruntime or onnxruntime-gpu.")
+            self.adapter = ONNXAdapter(device=device)
+        elif model_type == ModelType.TORCHSCRIPT:
+            self.adapter = TorchScriptAdapter(device=device)
+        elif model_type == ModelType.TENSORRT:
+            if not TENSORRT_AVAILABLE:
+                raise ImportError("TensorRT is not available. Please install TensorRT and PyCUDA.")
+            self.adapter = TensorRTAdapter()
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
+        
+        # Load the model
+        self.adapter.load_model(model_path)
+        
+        logger.info(f"Model server initialized with {model_type} model at {model_path}")
+    
+    def predict_from_image(self, image: Image.Image) -> Tuple[List[Dict[str, Any]], float]:
         """
         Run inference on an image.
-
+        
         Args:
-            image: PIL Image or numpy array
-            top_k: Number of top predictions to return
-
+            image: PIL Image to run inference on
+            
         Returns:
-            Tuple of (predictions, inference_time)
+            Tuple of (predictions, inference_time_ms)
         """
-        return self.adapter.predict_from_image(image, top_k=top_k)
+        import time
+        
+        # Preprocess image
+        inputs = self.adapter.preprocess(image)
+        
+        # Run inference and measure time
+        start_time = time.time()
+        outputs = self.adapter.predict(inputs)
+        end_time = time.time()
+        
+        # Calculate inference time in milliseconds
+        inference_time_ms = (end_time - start_time) * 1000
+        
+        # Postprocess outputs
+        predictions = self.adapter.postprocess(outputs, self.class_names, self.top_k)
+        
+        return predictions, inference_time_ms
 
-    def predict_from_image_bytes(
-        self, image_bytes, top_k=5
-    ) -> Tuple[List[Dict[str, Any]], float]:
+
+class InferenceClient:
+    """Client for the inference API."""
+    
+    def __init__(self, url: str = "http://localhost:8000"):
         """
-        Run inference on image bytes.
-
+        Initialize the inference client.
+        
         Args:
-            image_bytes: Bytes of the image
-            top_k: Number of top predictions to return
-
-        Returns:
-            Tuple of (predictions, inference_time)
+            url: URL of the inference API
         """
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        return self.predict_from_image(image, top_k=top_k)
-
-    def predict_from_image_base64(
-        self, image_base64, top_k=5
-    ) -> Tuple[List[Dict[str, Any]], float]:
+        self.url = url.rstrip("/")
+    
+    def predict_from_image_path(self, image_path: str) -> Dict[str, Any]:
         """
-        Run inference on base64 encoded image.
-
+        Run inference on an image file.
+        
         Args:
-            image_base64: Base64 encoded image string
-            top_k: Number of top predictions to return
-
+            image_path: Path to the image file
+            
         Returns:
-            Tuple of (predictions, inference_time)
+            Prediction results
         """
-        image_bytes = base64.b64decode(image_base64)
-        return self.predict_from_image_bytes(image_bytes, top_k=top_k)
-
-    def predict_from_image_url(
-        self, image_url, top_k=5
-    ) -> Tuple[List[Dict[str, Any]], float]:
+        with open(image_path, "rb") as f:
+            files = {"file": (os.path.basename(image_path), f, "image/jpeg")}
+            response = requests.post(f"{self.url}/predict/image", files=files)
+        
+        return self._handle_response(response)
+    
+    def predict_from_image_url(self, image_url: str) -> Dict[str, Any]:
         """
-        Run inference on image from URL.
-
+        Run inference on an image URL.
+        
         Args:
-            image_url: URL of the image
-            top_k: Number of top predictions to return
-
+            image_url: URL to the image
+            
         Returns:
-            Tuple of (predictions, inference_time)
+            Prediction results
         """
-        response = requests.get(image_url, stream=True)
-        response.raise_for_status()
-        image = Image.open(io.BytesIO(response.content)).convert("RGB")
-        return self.predict_from_image(image, top_k=top_k)
+        data = {"image_url": image_url}
+        response = requests.post(f"{self.url}/predict", json=data)
+        
+        return self._handle_response(response)
+    
+    def predict_from_image_base64(self, image_base64: str) -> Dict[str, Any]:
+        """
+        Run inference on a base64-encoded image.
+        
+        Args:
+            image_base64: Base64-encoded image data
+            
+        Returns:
+            Prediction results
+        """
+        data = {"image_data": image_base64}
+        response = requests.post(f"{self.url}/predict", json=data)
+        
+        return self._handle_response(response)
+    
+    def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
+        """
+        Handle API response.
+        
+        Args:
+            response: API response
+            
+        Returns:
+            Response JSON data
+        """
+        if response.status_code != 200:
+            raise RuntimeError(f"API request failed with status code {response.status_code}: {response.text}")
+        
+        return response.json()
 
 
-def create_inference_app(
+def create_app(
     model_path: str,
-    model_type: str = "pytorch",
+    model_type: str,
     class_names: Optional[List[str]] = None,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    class_names_path: Optional[str] = None,
+    top_k: int = 5,
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
 ) -> FastAPI:
     """
-    Create a FastAPI application for serving inference.
-
+    Create a FastAPI application for model inference.
+    
     Args:
-        model_path: Path to the model file or directory
-        model_type: Type of model (pytorch, onnx, torchscript)
+        model_path: Path to the model file
+        model_type: Type of the model
         class_names: List of class names
+        class_names_path: Path to a JSON file with class names
+        top_k: Number of top predictions to return
         device: Device to run inference on
-
+        
     Returns:
         FastAPI application
     """
-    # Initialize service
-    service = InferenceService(
-        model_path=model_path,
-        model_type=model_type,
-        class_names=class_names,
-        device=device,
+    # Create FastAPI app
+    app = FastAPI(
+        title="CLIP HAR Inference API",
+        description="API for Human Action Recognition using CLIP",
+        version="1.0.0"
     )
-
-    # Create app
-    app = FastAPI(title="CLIP HAR Inference Service", version="1.0.0")
-
+    
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["*"],
+        allow_headers=["*"]
     )
-
+    
+    # Create model server
+    try:
+        model_server = ModelServer(
+            model_path=model_path,
+            model_type=ModelType(model_type),
+            class_names=class_names,
+            class_names_path=class_names_path,
+            top_k=top_k,
+            device=device
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize model server: {e}")
+        raise RuntimeError(f"Failed to initialize model server: {e}")
+    
+    # Store model info
+    model_info = {
+        "model_type": model_type,
+        "model_path": model_path,
+        "device": device,
+        "num_classes": len(model_server.class_names),
+        "class_names": model_server.class_names[:10] + ["..."] if len(model_server.class_names) > 10 else model_server.class_names,
+        "top_k": top_k
+    }
+    
     @app.get("/")
     async def root():
-        """Get service information."""
+        """Root endpoint with API information."""
         return {
-            "name": "CLIP HAR Inference Service",
-            "model_name": service.model_name,
-            "model_type": service.model_type,
-            "device": service.device,
-            "class_names": service.adapter.class_names,
+            "name": "CLIP HAR Inference API",
+            "version": "1.0.0",
+            "model_info": model_info,
+            "endpoints": {
+                "/": "API information",
+                "/health": "Health check",
+                "/predict": "Run inference on an image",
+                "/predict/image": "Run inference on an uploaded image"
+            }
         }
-
+    
     @app.get("/health")
     async def health():
         """Health check endpoint."""
-        return {"status": "healthy"}
-
-    @app.post("/predict")
-    async def predict(request: InferenceRequest):
-        """Run inference on an image."""
+        return {"status": "ok", "model": model_info}
+    
+    async def _predict_image(image: Image.Image) -> Dict[str, Any]:
+        """
+        Run inference on an image.
+        
+        Args:
+            image: PIL Image to run inference on
+            
+        Returns:
+            Prediction results
+        """
         try:
-            # Check inputs
-            if request.image_data:
-                # Process base64 image
-                predictions, inference_time = service.predict_from_image_base64(
-                    request.image_data, top_k=request.top_k or 5
-                )
-            elif request.image_url:
-                # Process image URL
-                predictions, inference_time = service.predict_from_image_url(
-                    request.image_url, top_k=request.top_k or 5
-                )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No input provided. Please provide either image_data or image_url.",
-                )
-
-            return InferenceResult(
+            predictions, inference_time_ms = model_server.predict_from_image(image)
+            
+            result = PredictionOutput(
                 predictions=predictions,
-                inference_time=inference_time,
-                model_name=service.model_name,
+                model_info={
+                    "model_type": model_type,
+                    "model_name": os.path.basename(model_path)
+                },
+                inference_time_ms=inference_time_ms
             )
-
+            
+            return result.dict()
         except Exception as e:
-            logger.error(f"Error during inference: {e}", exc_info=True)
+            logger.error(f"Prediction failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
+    
+    @app.post("/predict", response_model=PredictionOutput)
+    async def predict(input_data: ImageInput):
+        """
+        Run inference on an image.
+        
+        Args:
+            input_data: Input data with image data or URL
+            
+        Returns:
+            Prediction results
+        """
+        # Check if input is valid
+        if not input_data.image_data and not input_data.image_url:
             raise HTTPException(
-                status_code=500, detail=f"Error during inference: {str(e)}"
+                status_code=400,
+                detail="Either image_data or image_url must be provided"
             )
-
-    @app.post("/predict/image")
-    async def predict_image(file: UploadFile = File(...), top_k: int = Form(5)):
-        """Run inference on an uploaded image."""
+        
         try:
-            # Read image
-            image_bytes = await file.read()
-
+            # Load image from base64 data
+            if input_data.image_data:
+                image_data = base64.b64decode(input_data.image_data)
+                image = Image.open(io.BytesIO(image_data))
+            # Load image from URL
+            elif input_data.image_url:
+                response = requests.get(input_data.image_url, stream=True)
+                response.raise_for_status()
+                image = Image.open(io.BytesIO(response.content))
+            
             # Run inference
-            predictions, inference_time = service.predict_from_image_bytes(
-                image_bytes, top_k=top_k
-            )
-
-            return InferenceResult(
-                predictions=predictions,
-                inference_time=inference_time,
-                model_name=service.model_name,
-            )
-
-        except Exception as e:
-            logger.error(f"Error during inference: {e}", exc_info=True)
+            return await _predict_image(image)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch image from URL: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error during inference: {str(e)}"
+                status_code=400,
+                detail=f"Failed to fetch image from URL: {e}"
             )
-
+        except Exception as e:
+            logger.error(f"Prediction failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Prediction failed: {e}"
+            )
+    
+    @app.post("/predict/image", response_model=PredictionOutput)
+    async def predict_image(file: UploadFile = File(...)):
+        """
+        Run inference on an uploaded image.
+        
+        Args:
+            file: Uploaded image file
+            
+        Returns:
+            Prediction results
+        """
+        try:
+            # Read image file
+            contents = await file.read()
+            image = Image.open(io.BytesIO(contents))
+            
+            # Run inference
+            return await _predict_image(image)
+        except Exception as e:
+            logger.error(f"Prediction failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Prediction failed: {e}"
+            )
+    
     return app
 
 
-def serve_model(
-    model_path: str,
-    model_type: str = "pytorch",
-    class_names: Optional[List[str]] = None,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
-    host: str = "0.0.0.0",
-    port: int = 8000,
-):
-    """
-    Serve a model for inference.
-
-    Args:
-        model_path: Path to the model file or directory
-        model_type: Type of model (pytorch, onnx, torchscript)
-        class_names: List of class names
-        device: Device to run inference on
-        host: Host to serve on
-        port: Port to serve on
-    """
-    # Create app
-    app = create_inference_app(
-        model_path=model_path,
-        model_type=model_type,
-        class_names=class_names,
-        device=device,
-    )
-
-    # Run server
-    uvicorn.run(app, host=host, port=port)
-
-
-class InferenceClient:
-    """Client for making inference requests to the inference service."""
-
-    def __init__(self, url: str = "http://localhost:8000"):
-        """
-        Initialize the client.
-
-        Args:
-            url: URL of the inference service
-        """
-        self.url = url.rstrip("/")
-
-    def predict_from_image(self, image, top_k=5) -> Dict[str, Any]:
-        """
-        Run inference on an image.
-
-        Args:
-            image: PIL Image
-            top_k: Number of top predictions to return
-
-        Returns:
-            Dictionary with predictions and inference time
-        """
-        # Convert to bytes
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG")
-        buffer.seek(0)
-
-        # Send request
-        files = {"file": ("image.jpg", buffer, "image/jpeg")}
-        data = {"top_k": top_k}
-
-        response = requests.post(f"{self.url}/predict/image", files=files, data=data)
-        response.raise_for_status()
-
-        return response.json()
-
-    def predict_from_image_path(self, image_path, top_k=5) -> Dict[str, Any]:
-        """
-        Run inference on an image from file path.
-
-        Args:
-            image_path: Path to the image file
-            top_k: Number of top predictions to return
-
-        Returns:
-            Dictionary with predictions and inference time
-        """
-        image = Image.open(image_path).convert("RGB")
-        return self.predict_from_image(image, top_k=top_k)
-
-    def predict_from_image_url(self, image_url, top_k=5) -> Dict[str, Any]:
-        """
-        Run inference on an image from URL.
-
-        Args:
-            image_url: URL of the image
-            top_k: Number of top predictions to return
-
-        Returns:
-            Dictionary with predictions and inference time
-        """
-        data = {"image_url": image_url, "top_k": top_k}
-
-        response = requests.post(f"{self.url}/predict", json=data)
-        response.raise_for_status()
-
-        return response.json()
-
-    def predict_from_image_base64(self, image_base64, top_k=5) -> Dict[str, Any]:
-        """
-        Run inference on a base64 encoded image.
-
-        Args:
-            image_base64: Base64 encoded image string
-            top_k: Number of top predictions to return
-
-        Returns:
-            Dictionary with predictions and inference time
-        """
-        data = {"image_data": image_base64, "top_k": top_k}
-
-        response = requests.post(f"{self.url}/predict", json=data)
-        response.raise_for_status()
-
-        return response.json()
-
-
 def main():
-    """Command line entrypoint for serving a model."""
+    """Run the inference API server."""
     import argparse
-
-    parser = argparse.ArgumentParser(description="Serve a CLIP HAR model for inference")
-    parser.add_argument(
-        "--model_path",
-        type=str,
-        required=True,
-        help="Path to the model file or directory",
-    )
+    
+    parser = argparse.ArgumentParser(description="CLIP HAR Inference API")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the model file")
     parser.add_argument(
         "--model_type",
         type=str,
-        default="pytorch",
-        choices=["pytorch", "onnx", "torchscript"],
-        help="Type of model",
+        choices=["pytorch", "onnx", "torchscript", "tensorrt"],
+        required=True,
+        help="Type of the model"
     )
-    parser.add_argument(
-        "--class_names",
-        type=str,
-        default=None,
-        help="Path to JSON file with class names",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda" if torch.cuda.is_available() else "cpu",
-        help="Device to run inference on",
-    )
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to serve on")
-    parser.add_argument("--port", type=int, default=8000, help="Port to serve on")
-
+    parser.add_argument("--class_names", type=str, nargs="+", help="List of class names")
+    parser.add_argument("--class_names_path", type=str, help="Path to a JSON file with class names")
+    parser.add_argument("--top_k", type=int, default=5, help="Number of top predictions to return")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device to run inference on")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    
     args = parser.parse_args()
-
-    # Load class names if provided
-    class_names = None
-    if args.class_names:
-        with open(args.class_names, "r") as f:
-            class_names = json.load(f)
-
-    # Serve model
-    serve_model(
+    
+    # Create FastAPI app
+    app = create_app(
         model_path=args.model_path,
         model_type=args.model_type,
-        class_names=class_names,
-        device=args.device,
-        host=args.host,
-        port=args.port,
+        class_names=args.class_names,
+        class_names_path=args.class_names_path,
+        top_k=args.top_k,
+        device=args.device
     )
+    
+    # Run the server
+    uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

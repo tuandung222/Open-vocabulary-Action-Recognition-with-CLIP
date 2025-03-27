@@ -1,22 +1,23 @@
 version: '3.8'
 
 services:
-  # Training service
+  # Training container
   clip-har-train:
     build:
       context: .
       dockerfile: Dockerfile.train
-    image: ${DOCKER_REGISTRY:-localhost:5000}/clip-har-train:${TAG:-latest}
+    image: tuandung12092002/clip-har-train:latest
     volumes:
       - ./data:/app/data
       - ./configs:/app/configs
       - ./outputs:/app/outputs
-      - ${HOME}/.aws:/root/.aws:ro  # For S3 access if needed
-      - ${HOME}/.dvc:/root/.dvc:ro  # For DVC credentials
+      - ./models/checkpoints:/app/models/checkpoints
+      - ./.dvc:/app/.dvc
     environment:
+      - PYTHONPATH=/app
       - CUDA_VISIBLE_DEVICES=0
+      - MLFLOW_TRACKING_URI=http://localhost:5000
       - WANDB_API_KEY=${WANDB_API_KEY}
-      - HF_TOKEN=${HF_TOKEN}
     deploy:
       resources:
         reservations:
@@ -25,37 +26,53 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # Combined app and inference service
+  # App and inference container
   clip-har-app:
     build:
       context: .
       dockerfile: Dockerfile.app
-    image: ${DOCKER_REGISTRY:-localhost:5000}/clip-har-app:${TAG:-latest}
+    image: tuandung12092002/clip-har-app:latest
     ports:
-      - "8501:8501"  # Streamlit UI
-      - "8000:8000"  # FastAPI endpoint
+      - "8501:8501"  # Streamlit
+      - "8000:8000"  # FastAPI
     volumes:
       - ./models/checkpoints:/app/models/checkpoints
-      - ./data:/app/data:ro
-      - ./evaluation_results:/app/evaluation_results
+      - ./data:/app/data
     environment:
-      - MODEL_PATH=/app/models/checkpoints/best_model.pt
       - PYTHONPATH=/app
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 10s
+    restart: unless-stopped
 
-  # Registry for storing Docker images (optional, for development)
-  registry:
-    image: registry:2
+  # MLflow tracking server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.4.1
     ports:
       - "5000:5000"
     volumes:
+      - ./mlruns:/mlruns
+    command: mlflow server --backend-store-uri sqlite:///mlruns/mlflow.db --default-artifact-root /mlruns --host 0.0.0.0
+
+  # Local registry (optional)
+  registry:
+    image: registry:2
+    ports:
+      - "5001:5000"
+    volumes:
       - registry-data:/var/lib/registry
-    restart: always
 
 volumes:
   registry-data:
+    driver: local

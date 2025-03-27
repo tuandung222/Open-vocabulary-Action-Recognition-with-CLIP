@@ -36,6 +36,6 @@ ENTRYPOINT ["python"]
 CMD ["train.py", "--distributed_mode=none", "--batch_size=64", "--max_epochs=10"]
 
 # Labels for image metadata
-LABEL maintainer="tuandunghcmut" \
+LABEL maintainer="tuandung12092002@gmail.com" \
       version="1.0" \
-      description="CLIP-based Human Action Recognition - Training Environment"
+      description="CLIP HAR Training Container"
