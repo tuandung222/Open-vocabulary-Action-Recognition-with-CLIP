@@ -101,17 +101,56 @@ CLIP_HAR_PROJECT/
 
 ### Single-GPU Training
 
-```bash
-python train.py --distributed_mode none --batch_size 128 --max_epochs 15
-```
-
-### Distributed Training (DDP)
+For experiments and smaller datasets, run training on a single GPU:
 
 ```bash
-python launch_distributed.py --distributed_mode ddp --batch_size 64 --max_epochs 15
+python train.py --distributed_mode none --batch_size 128 --max_epochs 15 --lr 3e-6
 ```
+
+### Distributed Training with DDP
+
+For faster training with multiple GPUs using DistributedDataParallel (DDP):
+
+```bash
+# Launch DDP training using torchrun (automatically handles process creation)
+python launch_distributed.py \
+    --distributed_mode ddp \
+    --batch_size 64 \
+    --max_epochs 15 \
+    --lr 3e-6 \
+    --output_dir outputs/ddp_training
+```
+
+### Large-Scale Training with FSDP
+
+For very large models or datasets, use Fully Sharded Data Parallel (FSDP) to shard model parameters across GPUs:
+
+```bash
+python launch_distributed.py \
+    --distributed_mode fsdp \
+    --batch_size 32 \
+    --max_epochs 15 \
+    --lr 2e-6 \
+    --output_dir outputs/fsdp_training
+```
+
+### Training Configuration Options
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--distributed_mode` | Training mode (`none`, `ddp`, `fsdp`) | `none` |
+| `--model_name` | CLIP model name/path | `openai/clip-vit-base-patch16` |
+| `--batch_size` | Training batch size (per GPU) | 256 |
+| `--eval_batch_size` | Evaluation batch size (per GPU) | 128 |
+| `--max_epochs` | Maximum number of training epochs | 15 |
+| `--lr` | Learning rate | 3e-6 |
+| `--unfreeze_visual` | Unfreeze visual encoder | False |
+| `--unfreeze_text` | Unfreeze text encoder | False |
+| `--no_mixed_precision` | Disable mixed precision training | False |
 
 ### Using the Training Pipeline
+
+Run an end-to-end training pipeline with all components:
 
 ```bash
 python -m CLIP_HAR_PROJECT.pipeline.training_pipeline \
@@ -142,6 +181,8 @@ The automated training pipeline:
 - Runs the complete training pipeline
 - Pushes the trained model to HuggingFace Hub
 - Saves all results and metrics
+
+For a comprehensive guide covering all training scenarios, distributed training options, and troubleshooting tips, see [Training Guide](docs/training_guide.md).
 
 ## 6. Evaluation
 
@@ -403,6 +444,18 @@ model_url = push_model_to_hub(
 print(f"Model uploaded to: {model_url}")
 ```
 
+### Advanced HuggingFace Hub Features
+
+The project supports advanced HuggingFace Hub integration including:
+
+- **Automated model publishing** during training
+- **Custom model cards** with rich metadata
+- **Complete pipeline publishing** for easier inference
+- **CI/CD integration** through GitHub Actions
+- **Model versioning** with tags and branches
+
+For detailed instructions on these advanced features, see [HuggingFace Integration Guide](docs/huggingface_integration_guide.md).
+
 ## 14. Streamlit App
 
 Run the Streamlit app:
@@ -554,74 +607,3 @@ The CLIP HAR project implements a robust CI/CD pipeline to automate testing, bui
 ### Pipeline Overview
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│    Build    │───▶│    Test     │───▶│ Model Eval  │───▶│  Artifacts  │───▶│   Deploy    │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-```
-
-### GitHub Actions Workflows
-
-My CI/CD pipeline is implemented with GitHub Actions and consists of these key workflows:
-
-#### 1. Continuous Integration
-- **Trigger**: On push to main/develop branches and pull requests
-- **Jobs**: Code linting (flake8, black, isort) and unit/integration tests
-- **Benefits**: Ensures code quality and prevents breaking changes
-
-#### 2. Model Evaluation
-- **Trigger**: When model code changes are pushed
-- **Jobs**: Pulls test data via DVC, evaluates model performance, uploads metrics
-- **Hardware**: Runs on GPU-enabled self-hosted runners
-- **Benefits**: Validates model performance before deployment
-
-#### 3. Container Building
-- **Trigger**: On pushes to main and version tags
-- **Jobs**: Builds Docker images with optimized caching, pushes to DockerHub
-- **Benefits**: Creates reproducible deployment artifacts
-
-#### 4. Kubernetes Deployment
-- **Trigger**: After successful container builds or manual dispatch
-- **Jobs**: Applies Kubernetes configurations with rolling updates
-- **Benefits**: Zero-downtime deployments with health checking
-
-### Automated Model Retraining
-
-The pipeline includes a weekly scheduled job for model retraining that:
-- Pulls the latest dataset version from DVC
-- Executes the automated training pipeline
-- Pushes successful models to the model registry
-- Can be manually triggered as needed
-
-### GitOps with ArgoCD
-
-For production environments, I use ArgoCD for GitOps-based continuous delivery:
-
-1. Repository structure follows the GitOps pattern with environment-specific configurations
-2. ArgoCD syncs the Kubernetes cluster state with the declared configurations
-3. Promotion between environments (dev, staging, prod) via pull requests
-
-### CI/CD Best Practices
-
-- **Immutable Artifacts**: Container images are versioned and never modified
-- **Canary Deployments**: New versions are deployed to a subset of users first
-- **Automated Rollbacks**: Failed deployments trigger automatic rollbacks
-- **Metric Validation**: Post-deployment checks verify system metrics
-- **Security Scanning**: Container images are scanned for vulnerabilities
-
-## 21. Documentation
-
-- [Architecture Overview](docs/architecture.md)
-- [Docker Setup Guide](docs/docker_guide.md)
-- [API Reference](docs/api_reference.md)
-- [Experiment Tracking Guide](docs/experiment_tracking.md)
-- [Project Roadmap](ROADMAP.md)
-
-## 22. Acknowledgements
-
-- [OpenAI CLIP](https://github.com/openai/CLIP)
-- [HuggingFace Transformers](https://github.com/huggingface/transformers)
-- [Human Action Recognition Dataset](https://huggingface.co/datasets/Bingsu/Human_Action_Recognition)
-
-## 23. License
-
-This project is licensed under the MIT License. 
