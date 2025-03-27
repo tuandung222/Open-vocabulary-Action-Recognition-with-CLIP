@@ -1,0 +1,102 @@
+name: Deploy to Kubernetes
+
+on:
+  workflow_run:
+    workflows: ["CLIP HAR CI/CD Pipeline"]
+    branches: [main]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  deploy:
+    name: Deploy to K8s
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    # Define environment variables for each deployment environment
+    env:
+      NAMESPACE: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Configure kubeconfig
+      run: |
+        echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+        chmod 600 kubeconfig.yaml
+        export KUBECONFIG=kubeconfig.yaml
+      
+    - name: Create namespace if not exists
+      run: |
+        kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+    
+    - name: Set Docker image tag
+      run: |
+        # Get the short SHA from the last successful CI build
+        DOCKER_TAG=$(echo ${{ github.sha }} | cut -c1-7)
+        echo "Using tag: $DOCKER_TAG"
+        echo "DOCKER_TAG=$DOCKER_TAG" >> $GITHUB_ENV
+    
+    - name: Update deployment image
+      run: |
+        # Update the image tag in the deployment file
+        sed -i 's|image: tuandung222/clip-har-inference:latest|image: tuandung12092002/clip-har-app:sha-'$DOCKER_TAG'|g' kubernetes/clip-har-inference.yaml
+        
+        # Apply ConfigMap first to ensure configuration is available
+        kubectl apply -f kubernetes/clip-har-inference.yaml --namespace=$NAMESPACE
+        
+        # Wait for deployment to complete
+        kubectl rollout status deployment/clip-har-inference --namespace=$NAMESPACE --timeout=300s
+    
+    - name: Apply monitoring stack
+      run: |
+        kubectl apply -f kubernetes/clip-har-monitoring.yaml --namespace=$NAMESPACE
+    
+    - name: Verify deployment
+      run: |
+        # Wait for all pods to be ready
+        kubectl get pods --namespace=$NAMESPACE
+        
+        # Check if the service is exposed
+        kubectl get svc --namespace=$NAMESPACE
+    
+    - name: Run post-deployment tests
+      run: |
+        # Wait for service to be fully available
+        sleep 30
+        
+        # Get service endpoint
+        SERVICE_IP=$(kubectl get svc clip-har-inference --namespace=$NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        SERVICE_PORT=$(kubectl get svc clip-har-inference --namespace=$NAMESPACE -o jsonpath='{.spec.ports[0].port}')
+        
+        if [ -n "$SERVICE_IP" ]; then
+          # Run health check
+          curl -f http://$SERVICE_IP:$SERVICE_PORT/health || { echo "Health check failed"; exit 1; }
+          echo "Health check passed"
+        else
+          echo "Service not yet exposed externally, skipping health check"
+        fi
+    
+    - name: Notify deployment status
+      if: always()
+      run: |
+        DEPLOY_STATUS="${{ job.status }}"
+        echo "Deployment to $NAMESPACE completed with status: $DEPLOY_STATUS"
+        
+        # Here you would typically send notifications to Slack/Teams/etc.
+        # Example (commented out):
+        # curl -X POST -H 'Content-type: application/json' --data '{"text":"CLIP HAR deployment to '$NAMESPACE' '$DEPLOY_STATUS'"}' ${{ secrets.SLACK_WEBHOOK_URL }} 

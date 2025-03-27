@@ -1,0 +1,115 @@
+name: Model Evaluation
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'models/**'
+      - 'training/**'
+      - 'configs/**'
+      - 'CLIP_HAR_PROJECT/model/**'
+  workflow_dispatch:
+    inputs:
+      model_path:
+        description: 'Path to model to evaluate'
+        required: false
+        default: 'outputs/latest_model.pt'
+      dataset:
+        description: 'Dataset to use for evaluation'
+        required: false
+        default: 'test'
+
+jobs:
+  evaluate:
+    name: Evaluate Model Performance
+    runs-on: self-hosted
+    # Use self-hosted runner with GPUs for evaluation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Pull dataset using DVC
+      run: |
+        pip install dvc dvc-gdrive
+        dvc pull data/${{ github.event.inputs.dataset || 'test' }}
+    
+    - name: Run model evaluation
+      run: |
+        MODEL_PATH="${{ github.event.inputs.model_path || 'outputs/latest_model.pt' }}"
+        
+        # If the model doesn't exist locally, use the latest released model
+        if [ ! -f "$MODEL_PATH" ]; then
+          echo "Model not found locally, downloading latest model from registry"
+          python -m CLIP_HAR_PROJECT.mlops.model_registry --action download --output_path outputs/latest_model.pt
+          MODEL_PATH="outputs/latest_model.pt"
+        fi
+        
+        # Run evaluation
+        python -m CLIP_HAR_PROJECT.evaluate \
+          --model $MODEL_PATH \
+          --data data/${{ github.event.inputs.dataset || 'test' }} \
+          --batch_size 32 \
+          --output_file evaluation_results.json
+    
+    - name: Compare with baseline
+      run: |
+        python -m CLIP_HAR_PROJECT.mlops.compare_metrics \
+          --current evaluation_results.json \
+          --baseline benchmarks/baseline_metrics.json \
+          --threshold 0.02 \
+          --output evaluation_comparison.md
+    
+    - name: Generate model card
+      run: |
+        python -m CLIP_HAR_PROJECT.mlops.model_card_generator \
+          --metrics evaluation_results.json \
+          --model_info ${{ github.event.inputs.model_path || 'outputs/latest_model.pt' }} \
+          --output model_card.md
+    
+    - name: Upload evaluation artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: model-evaluation
+        path: |
+          evaluation_results.json
+          evaluation_comparison.md
+          model_card.md
+    
+    - name: Check performance regression
+      id: performance_check
+      run: |
+        if grep -q "FAIL" evaluation_comparison.md; then
+          echo "::set-output name=regression::true"
+          exit 1
+        else
+          echo "::set-output name=regression::false"
+        fi
+    
+    - name: Notify on performance regression
+      if: failure() && steps.performance_check.outputs.regression == 'true'
+      run: |
+        echo "Performance regression detected! Review evaluation_comparison.md for details."
+        # You would add a notification via email/Slack/Teams here
+        
+    - name: Register model in production (if on main branch)
+      if: github.ref == 'refs/heads/main' && success()
+      run: |
+        echo "Registering model in production registry"
+        # Only push to model registry if on main branch and evaluation was successful
+        python -m CLIP_HAR_PROJECT.mlops.model_registry \
+          --action upload \
+          --model_path ${{ github.event.inputs.model_path || 'outputs/latest_model.pt' }} \
+          --metrics_path evaluation_results.json

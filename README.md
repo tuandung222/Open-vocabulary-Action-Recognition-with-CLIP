@@ -538,6 +538,208 @@ The monitoring system includes alerting for critical conditions:
 
 Alerts can be configured to notify through various channels (email, Slack, PagerDuty).
 
+## CI/CD Pipeline
+
+The CLIP HAR project implements a robust CI/CD pipeline to automate testing, building, and deployment processes while ensuring code quality and operational reliability.
+
+### Pipeline Overview
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│    Build    │───▶│    Test     │───▶│ Model Eval  │───▶│  Artifacts  │───▶│   Deploy    │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+### GitHub Actions Workflows
+
+All CI/CD processes are implemented using GitHub Actions, with separate workflows for different stages:
+
+#### 1. Continuous Integration
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install flake8 black isort
+      - name: Run linters
+        run: |
+          flake8 .
+          black --check .
+          isort --check .
+          
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest tests/
+```
+
+#### 2. Model Evaluation and Validation
+
+```yaml
+name: Model Evaluation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'models/**'
+      - 'training/**'
+      - 'configs/**'
+
+jobs:
+  evaluate:
+    runs-on: gpu-runner
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Download test dataset
+        run: dvc pull data/test
+      - name: Run model evaluation
+        run: python evaluate.py --model_path outputs/trained_model.pt --test_data data/test
+      - name: Upload metrics
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-metrics
+          path: evaluation/metrics.json
+```
+
+#### 3. Container Build and Push
+
+```yaml
+name: Build and Push Containers
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push inference image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: docker/Dockerfile.app
+          push: true
+          tags: tuandung222/clip-har-inference:latest
+```
+
+#### 4. Kubernetes Deployment
+
+```yaml
+name: Deploy to Kubernetes
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Containers"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+          export KUBECONFIG=kubeconfig.yaml
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f kubernetes/clip-har-inference.yaml
+          kubectl rollout status deployment/clip-har-inference
+```
+
+### Automated Model Retraining
+
+The pipeline includes a scheduled job for model retraining:
+
+```yaml
+name: Scheduled Model Retraining
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+  workflow_dispatch:
+
+jobs:
+  retrain:
+    runs-on: gpu-runner
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Pull latest dataset
+        run: dvc pull data
+      - name: Run training
+        run: python -m CLIP_HAR_PROJECT.mlops.automated_training --config configs/training_config.yaml
+      - name: Push to model registry
+        run: |
+          python -m CLIP_HAR_PROJECT.mlops.huggingface_hub_utils --model_path outputs/model.pt
+```
+
+### GitOps with ArgoCD
+
+For production environments, we use ArgoCD for GitOps-based continuous delivery:
+
+1. Repository structure follows the GitOps pattern with environment-specific configurations
+2. ArgoCD syncs the Kubernetes cluster state with the declared configurations
+3. Promotion between environments (dev, staging, prod) via pull requests
+
+### CI/CD Best Practices
+
+- **Immutable Artifacts**: Container images are versioned and never modified
+- **Canary Deployments**: New versions are deployed to a subset of users first
+- **Automated Rollbacks**: Failed deployments trigger automatic rollbacks
+- **Metric Validation**: Post-deployment checks verify system metrics
+- **Security Scanning**: Container images are scanned for vulnerabilities
+
 ## Acknowledgements
 
 - [OpenAI CLIP](https://github.com/openai/CLIP)
