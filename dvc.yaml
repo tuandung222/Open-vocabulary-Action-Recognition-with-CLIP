@@ -7,12 +7,36 @@ stages:
       - data/har_dataset/v1:
           persist: true
 
-  filter_dataset:
-    cmd: python scripts/download_dataset.py --dataset Bingsu/Human_Action_Recognition --output_dir data/har_dataset --version v2 --split train
+  # Active movements dataset (running, cycling, fighting, dancing)
+  active_movements_dataset:
+    cmd: python scripts/filter_dataset.py --input_dir data/har_dataset/v1 --output_dir data/har_dataset/v1_active --include_classes 2 6 10 3
     deps:
-      - scripts/download_dataset.py
+      - scripts/filter_dataset.py
+      - data/har_dataset/v1
     outs:
-      - data/har_dataset/v2:
+      - data/har_dataset/v1_active:
+          persist: true
+    frozen: true  # Only run when explicitly requested
+
+  # Balanced dataset with equal samples per class
+  balanced_dataset:
+    cmd: python scripts/filter_dataset.py --input_dir data/har_dataset/v1 --output_dir data/har_dataset/v1_balanced --balance --max_samples_per_class 500
+    deps:
+      - scripts/filter_dataset.py
+      - data/har_dataset/v1
+    outs:
+      - data/har_dataset/v1_balanced:
+          persist: true
+    frozen: true  # Only run when explicitly requested
+
+  # Social interactions dataset (clapping, hugging, fighting)
+  social_dataset:
+    cmd: python scripts/filter_dataset.py --input_dir data/har_dataset/v1 --output_dir data/har_dataset/v1_social --include_classes 1 7 6
+    deps:
+      - scripts/filter_dataset.py
+      - data/har_dataset/v1
+    outs:
+      - data/har_dataset/v1_social:
           persist: true
     frozen: true  # Only run when explicitly requested
 
@@ -22,36 +46,98 @@ stages:
       - data/har_dataset/v1
     frozen: true  # Only run when explicitly requested
 
-  train:
-    cmd: python train.py --distributed_mode none --batch_size 128 --max_epochs 15 --lr 3e-6 --output_dir outputs/model_run
+  train_full:
+    cmd: python train.py --distributed_mode none --batch_size 128 --max_epochs 15 --lr 3e-6 --output_dir outputs/model_full
     deps:
       - train.py
       - data/har_dataset/v1
     outs:
-      - outputs/model_run:
+      - outputs/model_full:
+          persist: true
+    frozen: true  # Only run when explicitly requested
+
+  train_active:
+    cmd: python train.py --distributed_mode none --batch_size 128 --max_epochs 15 --lr 3e-6 --output_dir outputs/model_active --data_dir data/har_dataset/v1_active
+    deps:
+      - train.py
+      - data/har_dataset/v1_active
+    outs:
+      - outputs/model_active:
+          persist: true
+    frozen: true  # Only run when explicitly requested
+
+  train_balanced:
+    cmd: python train.py --distributed_mode none --batch_size 128 --max_epochs 15 --lr 3e-6 --output_dir outputs/model_balanced --data_dir data/har_dataset/v1_balanced
+    deps:
+      - train.py
+      - data/har_dataset/v1_balanced
+    outs:
+      - outputs/model_balanced:
           persist: true
     frozen: true  # Only run when explicitly requested
 
   evaluate:
-    cmd: python evaluate.py --model_path outputs/model_run/best_model.pt --output_dir outputs/evaluation
+    cmd: python evaluate.py --model_path outputs/model_full/best_model.pt --output_dir outputs/evaluation
     deps:
       - evaluate.py
-      - outputs/model_run
+      - outputs/model_full
     outs:
       - outputs/evaluation:
           persist: true
     frozen: true  # Only run when explicitly requested
 
-  export:
-    cmd: python -m CLIP_HAR_PROJECT.deployment.export_clip_model
-      --model_path models/clip_har/model.pt
-      --config_path configs/training_config.yaml
-      --export_format all
-      --output_dir exports
+  compare_models:
+    cmd: >
+      python -c "
+      import matplotlib.pyplot as plt
+      import pandas as pd
+      import os
+      import json
+      
+      # Create output directory
+      os.makedirs('outputs/model_comparison', exist_ok=True)
+      
+      # Load metrics
+      models = ['full', 'active', 'balanced']
+      metrics = {}
+      
+      for model in models:
+          try:
+              with open(f'outputs/model_{model}/metrics.json', 'r') as f:
+                  metrics[model] = json.load(f)
+          except:
+              print(f'Warning: Metrics for {model} not found')
+      
+      # Create comparison plots
+      if metrics:
+          # Accuracy comparison
+          fig, ax = plt.subplots(figsize=(10, 6))
+          accuracies = {m: metrics[m].get('accuracy', 0) for m in metrics}
+          pd.Series(accuracies).plot(kind='bar', ax=ax)
+          ax.set_ylabel('Accuracy')
+          ax.set_title('Model Accuracy Comparison')
+          plt.tight_layout()
+          plt.savefig('outputs/model_comparison/accuracy_comparison.png')
+          
+          # Create report
+          with open('outputs/model_comparison/report.md', 'w') as f:
+              f.write('# Model Comparison Report\\n\\n')
+              f.write('## Accuracy\\n\\n')
+              for model in metrics:
+                  f.write(f'- **{model}**: {metrics[model].get(\"accuracy\", 0):.4f}\\n')
+              
+              f.write('\\n## Dataset Versions\\n\\n')
+              for model in models:
+                  f.write(f'- **{model}**: ' + ('Full dataset' if model == 'full' else 
+                                              'Active movements only' if model == 'active' else
+                                              'Balanced classes' if model == 'balanced' else
+                                              'Unknown') + '\\n')
+      "
     deps:
-      - CLIP_HAR_PROJECT/deployment/export_clip_model.py
-      - models/clip_har/model.pt
+      - outputs/model_full
+      - outputs/model_active
+      - outputs/model_balanced
     outs:
-      - exports/model.onnx
-      - exports/model.trt:
+      - outputs/model_comparison:
           persist: true
+    frozen: true  # Only run when explicitly requested

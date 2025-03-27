@@ -17,7 +17,14 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-import evaluate
+import json
+import logging
+import sys
+import threading
+import time
+
+# Import HuggingFace evaluate library with a distinct name to avoid conflicts
+import evaluate as hf_evaluate
 
 # Import data utils
 from data.preprocessing import collate_fn
@@ -34,6 +41,7 @@ from training.distributed import (
     setup_distributed_environment,
     wrap_model_for_distributed,
 )
+from utils.distributed import get_rank, get_world_size
 
 
 @dataclass
@@ -443,10 +451,10 @@ class DistributedTrainer:
     def evaluate(self) -> Dict[str, float]:
         """Evaluate the model using metrics."""
         # Load metrics
-        accuracy_metric = evaluate.load("accuracy")
-        f1_metric = evaluate.load("f1")
-        precision_metric = evaluate.load("precision")
-        recall_metric = evaluate.load("recall")
+        accuracy_metric = hf_evaluate.load("accuracy")
+        f1_metric = hf_evaluate.load("f1")
+        precision_metric = hf_evaluate.load("precision")
+        recall_metric = hf_evaluate.load("recall")
 
         list_metrics = [accuracy_metric, f1_metric, precision_metric, recall_metric]
 
