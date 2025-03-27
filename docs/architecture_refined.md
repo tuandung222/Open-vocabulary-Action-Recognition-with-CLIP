@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CLIP HAR system provides an end-to-end solution for Human Action Recognition using OpenAI's CLIP (Contrastive Language-Image Pre-training) model. By leveraging CLIP's powerful multi-modal capabilities, our system can recognize human actions from images with high accuracy in both zero-shot and fine-tuned settings.
+The CLIP HAR system implements a comprehensive pipeline for Human Action Recognition using the Contrastive Language-Image Pre-training (CLIP) model. By leveraging CLIP's powerful multi-modal capabilities, my system can recognize human actions from images with high accuracy in both zero-shot and fine-tuned settings.
 
 ## System Architecture
 

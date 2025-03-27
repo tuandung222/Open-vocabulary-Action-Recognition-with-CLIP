@@ -86,9 +86,9 @@ Modern HAR systems use deep neural networks:
 - Applying attention mechanisms to focus on important parts of the video
 - Using vision transformers to process sequences of video frames
 
-## Our CLIP-based Approach
+## My CLIP-based Approach
 
-In this project, we leverage CLIP's powerful visual understanding for HAR by:
+In this project, I leverage CLIP's powerful visual understanding for HAR by:
 
 1. Using CLIP's vision encoder to extract rich features from video frames
 2. Adapting these features to recognize human actions

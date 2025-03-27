@@ -726,7 +726,7 @@ jobs:
 
 ### GitOps with ArgoCD
 
-For production environments, we use ArgoCD for GitOps-based continuous delivery:
+For production environments, I use ArgoCD for GitOps-based continuous delivery:
 
 1. Repository structure follows the GitOps pattern with environment-specific configurations
 2. ArgoCD syncs the Kubernetes cluster state with the declared configurations

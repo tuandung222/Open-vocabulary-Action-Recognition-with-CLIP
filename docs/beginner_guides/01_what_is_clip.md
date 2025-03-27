@@ -40,14 +40,14 @@ Unlike traditional computer vision models that are trained on fixed categories (
 - Requires large labeled datasets specific to human actions
 - Typically needs retraining for new action classes
 
-**CLIP-Based HAR (Our Approach):**
+**CLIP-Based HAR (My Approach):**
 - Leverages CLIP's pre-trained understanding of visual concepts
 - Can recognize actions based on textual descriptions
 - Can be adapted to new action classes with minimal or no retraining
 
-### Our Implementation
+### My Implementation
 
-In this project, we use CLIP's powerful visual understanding as a foundation for human action recognition. We:
+In this project, I use CLIP's powerful visual understanding as a foundation for human action recognition. I:
 
 1. **Fine-tune** the pre-trained CLIP model on human action datasets
 2. **Adapt** the model to focus on temporal features important for actions
@@ -77,4 +77,4 @@ To learn more about CLIP:
 - [CLIP Research Paper](https://arxiv.org/abs/2103.00020)
 - [CLIP GitHub Repository](https://github.com/openai/CLIP)
 
-In the next guide, we'll explore the basics of Human Action Recognition and how it builds upon the foundations provided by models like CLIP. 
+In the next guide, I'll explore the basics of Human Action Recognition and how it builds upon the foundations provided by models like CLIP. 
