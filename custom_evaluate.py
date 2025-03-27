@@ -345,6 +345,122 @@ def save_metrics_summary(report_df, predictions, references, class_names, output
     return summary_table, class_table, accuracy_table
 
 
+def visualize_top_predictions(model, test_dataset, class_names, output_dir, num_samples=10, top_k=5, device="cuda"):
+    """
+    Visualize the top k predictions for sample images from the test set.
+    
+    Args:
+        model: The model to use for predictions
+        test_dataset: The test dataset
+        class_names: List of class names
+        output_dir: Output directory for visualizations
+        num_samples: Number of samples to visualize
+        top_k: Number of top predictions to show
+        device: Device to run the model on
+    """
+    import random
+    from PIL import Image
+    import matplotlib.pyplot as plt
+    import torch.nn.functional as F
+    
+    # Create visualization directory
+    vis_dir = os.path.join(output_dir, "visualizations")
+    os.makedirs(vis_dir, exist_ok=True)
+    
+    # Set model to evaluation mode
+    model.eval()
+    
+    # Select random samples
+    indices = random.sample(range(len(test_dataset)), min(num_samples, len(test_dataset)))
+    
+    # Process each sample
+    visualization_paths = []
+    with torch.no_grad():
+        for i, idx in enumerate(indices):
+            # Get sample
+            sample = test_dataset[idx]
+            
+            # Get image and label
+            image = sample["image"]
+            label_id = sample["label_id"]
+            true_label = class_names[label_id] if label_id < len(class_names) else f"Unknown ({label_id})"
+            
+            # Process sample through model
+            batch = {k: v.unsqueeze(0).to(device) if isinstance(v, torch.Tensor) else v for k, v in sample.items()}
+            
+            # Get logits
+            logits = model(**batch, return_loss=False)
+            
+            # Get top-k predictions
+            probs = F.softmax(logits, dim=1)
+            top_probs, top_indices = torch.topk(probs, top_k, dim=1)
+            
+            # Convert to numpy for plotting
+            top_probs = top_probs.cpu().numpy().flatten()
+            top_indices = top_indices.cpu().numpy().flatten()
+            
+            # Get class names
+            top_classes = [class_names[idx] for idx in top_indices]
+            
+            # Plot image and predictions
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+            
+            # Plot image
+            ax1.imshow(image)
+            ax1.axis('off')
+            ax1.set_title(f"True label: {true_label}")
+            
+            # Plot predictions as horizontal bar chart
+            y_pos = range(top_k)
+            ax2.barh(y_pos, top_probs)
+            ax2.set_yticks(y_pos)
+            ax2.set_yticklabels(top_classes)
+            ax2.set_xlabel('Probability')
+            ax2.set_title('Top Predictions')
+            
+            # Invert y-axis to show top prediction at the top
+            ax2.invert_yaxis()
+            
+            # Add text with probability values
+            for j, (prob, label) in enumerate(zip(top_probs, top_classes)):
+                ax2.text(prob + 0.01, j, f"{prob:.4f}", va='center')
+            
+            # Adjust layout
+            plt.tight_layout()
+            
+            # Save figure
+            vis_path = os.path.join(vis_dir, f"sample_{i+1}_vis.png")
+            plt.savefig(vis_path, dpi=150, bbox_inches='tight')
+            plt.close(fig)
+            
+            visualization_paths.append(vis_path)
+            
+            print(f"Saved visualization for sample {i+1}/{num_samples}")
+    
+    # Create summary visualization of all samples
+    if num_samples > 1:
+        fig, axes = plt.subplots(2, 5, figsize=(20, 8)) if num_samples >= 10 else plt.subplots(2, num_samples//2 + num_samples%2, figsize=(num_samples*2, 8))
+        axes = axes.flatten()
+        
+        for i, vis_path in enumerate(visualization_paths[:min(10, num_samples)]):
+            img = plt.imread(vis_path)
+            axes[i].imshow(img)
+            axes[i].axis('off')
+        
+        # Remove empty axes
+        for j in range(i+1, len(axes)):
+            fig.delaxes(axes[j])
+        
+        # Save summary visualization
+        summary_path = os.path.join(vis_dir, "summary_visualization.png")
+        plt.savefig(summary_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        
+        visualization_paths.append(summary_path)
+    
+    return visualization_paths
+
+
 def main():
     """Main evaluation function."""
     # Parse command line arguments
@@ -446,6 +562,38 @@ def main():
         output_dir=args.output_dir,
     )
 
+    # Visualize sample predictions with top-5 scores
+    print(f"\nVisualizing sample predictions...")
+    visualization_paths = visualize_top_predictions(
+        model,
+        datasets["test"],
+        class_names,
+        args.output_dir,
+        num_samples=10,
+        top_k=5,
+        device=device
+    )
+    
+    # Log visualizations as artifacts if MLflow is available
+    try:
+        import mlflow
+        if mlflow.active_run():
+            print("Logging visualizations to MLflow...")
+            for vis_path in visualization_paths:
+                mlflow.log_artifact(vis_path)
+    except (ImportError, Exception) as e:
+        print(f"Could not log to MLflow: {e}")
+    
+    # Log visualizations to wandb if available
+    try:
+        import wandb
+        if wandb.run:
+            print("Logging visualizations to Weights & Biases...")
+            for vis_path in visualization_paths:
+                wandb.log({os.path.basename(vis_path): wandb.Image(vis_path)})
+    except (ImportError, Exception) as e:
+        print(f"Could not log to Weights & Biases: {e}")
+    
     print(f"Evaluation complete. Results saved to {args.output_dir}")
     
     # Final cleanup
