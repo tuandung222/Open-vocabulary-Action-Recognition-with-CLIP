@@ -43,6 +43,10 @@ from evaluation.visualization import (
     plot_accuracy_per_class,
     plot_confusion_matrix,
 )
+
+# Import HuggingFace evaluate library with a distinct name to avoid conflicts
+import evaluate as hf_evaluate
+
 from mlops.tracking import (
     create_tracker,
     log_artifact,
