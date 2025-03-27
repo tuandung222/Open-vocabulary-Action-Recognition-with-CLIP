@@ -461,6 +461,112 @@ def visualize_top_predictions(model, test_dataset, class_names, output_dir, num_
     return visualization_paths
 
 
+def visualize_top_predictions_table(model, test_dataset, class_names, output_dir, num_samples=10, top_k=5, device="cuda"):
+    """
+    Create a table visualization of top-k predictions vs ground truth for sample images.
+    
+    Args:
+        model: The model to use for predictions
+        test_dataset: The test dataset
+        class_names: List of class names
+        output_dir: Output directory for visualizations
+        num_samples: Number of samples to visualize
+        top_k: Number of top predictions to show
+        device: Device to run the model on
+    """
+    import random
+    from PIL import Image
+    import matplotlib.pyplot as plt
+    import torch.nn.functional as F
+    from prettytable import PrettyTable
+    
+    # Create visualization directory
+    vis_dir = os.path.join(output_dir, "visualizations")
+    os.makedirs(vis_dir, exist_ok=True)
+    
+    # Set model to evaluation mode
+    model.eval()
+    
+    # Select random samples
+    indices = random.sample(range(len(test_dataset)), min(num_samples, len(test_dataset)))
+    
+    # Create results table
+    results_table = PrettyTable()
+    results_table.field_names = ["Sample", "Ground Truth"] + [f"Prediction {i+1}" for i in range(top_k)]
+    
+    # Process each sample
+    visualization_paths = []
+    with torch.no_grad():
+        for i, idx in enumerate(indices):
+            # Get sample
+            sample = test_dataset[idx]
+            
+            # Get image and label
+            image = sample["image"]
+            label_id = sample["label_id"]
+            true_label = class_names[label_id] if label_id < len(class_names) else f"Unknown ({label_id})"
+            
+            # Process sample through model
+            batch = {k: v.unsqueeze(0).to(device) if isinstance(v, torch.Tensor) else v for k, v in sample.items()}
+            
+            # Get logits
+            logits = model(**batch, return_loss=False)
+            
+            # Get top-k predictions
+            probs = F.softmax(logits, dim=1)
+            top_probs, top_indices = torch.topk(probs, top_k, dim=1)
+            
+            # Convert to numpy for plotting
+            top_probs = top_probs.cpu().numpy().flatten()
+            top_indices = top_indices.cpu().numpy().flatten()
+            
+            # Get class names
+            top_classes = [class_names[idx] for idx in top_indices]
+            
+            # Add to table
+            row = [f"Sample {i+1}", true_label]
+            for j in range(top_k):
+                pred_text = f"{top_classes[j]} ({top_probs[j]:.4f})"
+                row.append(pred_text)
+            results_table.add_row(row)
+            
+            # Save individual visualization as before
+            # [... existing visualization code ...]
+    
+    # Save table to text file
+    table_path = os.path.join(vis_dir, "top_predictions_table.txt")
+    with open(table_path, "w") as f:
+        f.write("# Top Predictions vs Ground Truth\n\n")
+        f.write(results_table.get_string())
+    
+    # Save table to CSV for easier processing
+    csv_path = os.path.join(vis_dir, "top_predictions_table.csv")
+    with open(csv_path, "w") as f:
+        f.write("Sample,Ground Truth," + ",".join([f"Prediction {i+1}" for i in range(top_k)]) + "\n")
+        for i, idx in enumerate(indices):
+            sample = test_dataset[idx]
+            label_id = sample["label_id"]
+            true_label = class_names[label_id] if label_id < len(class_names) else f"Unknown ({label_id})"
+            
+            batch = {k: v.unsqueeze(0).to(device) if isinstance(v, torch.Tensor) else v for k, v in sample.items()}
+            logits = model(**batch, return_loss=False)
+            probs = F.softmax(logits, dim=1)
+            top_probs, top_indices = torch.topk(probs, top_k, dim=1)
+            
+            top_probs = top_probs.cpu().numpy().flatten()
+            top_indices = top_indices.cpu().numpy().flatten()
+            top_classes = [class_names[idx] for idx in top_indices]
+            
+            row = [f"Sample {i+1}", true_label]
+            for j in range(top_k):
+                pred_text = f"{top_classes[j]} ({top_probs[j]:.4f})"
+                row.append(pred_text)
+            f.write(",".join([f'"{item}"' for item in row]) + "\n")
+    
+    print(f"Saved prediction table to {table_path}")
+    return table_path
+
+
 def main():
     """Main evaluation function."""
     # Parse command line arguments
@@ -554,16 +660,6 @@ def main():
 
     # Visualize predictions
     print(f"Visualizing predictions...")
-    visualize_predictions(
-        model,
-        datasets["test"],
-        class_names,
-        num_samples=args.visualize_samples,
-        output_dir=args.output_dir,
-    )
-
-    # Visualize sample predictions with top-5 scores
-    print(f"\nVisualizing sample predictions...")
     visualization_paths = visualize_top_predictions(
         model,
         datasets["test"],
@@ -574,23 +670,57 @@ def main():
         device=device
     )
     
-    # Log visualizations as artifacts if MLflow is available
+    # Generate table visualization
+    print(f"\nGenerating prediction table...")
+    table_path = visualize_top_predictions_table(
+        model,
+        datasets["test"],
+        class_names,
+        args.output_dir,
+        num_samples=10,
+        top_k=5,
+        device=device
+    )
+    
+    # Log visualizations to MLflow
     try:
         import mlflow
         if mlflow.active_run():
             print("Logging visualizations to MLflow...")
+            # Log image visualizations
             for vis_path in visualization_paths:
                 mlflow.log_artifact(vis_path)
+            
+            # Log table visualizations
+            mlflow.log_artifact(table_path)
+            csv_path = os.path.join(os.path.dirname(table_path), "top_predictions_table.csv")
+            if os.path.exists(csv_path):
+                mlflow.log_artifact(csv_path)
     except (ImportError, Exception) as e:
         print(f"Could not log to MLflow: {e}")
     
-    # Log visualizations to wandb if available
+    # Log visualizations to wandb
     try:
         import wandb
         if wandb.run:
             print("Logging visualizations to Weights & Biases...")
+            # Log image visualizations
             for vis_path in visualization_paths:
                 wandb.log({os.path.basename(vis_path): wandb.Image(vis_path)})
+            
+            # Log table as artifact
+            wandb.save(table_path)
+            
+            # Also create a wandb Table for interactive viewing
+            try:
+                import pandas as pd
+                csv_path = os.path.join(os.path.dirname(table_path), "top_predictions_table.csv")
+                if os.path.exists(csv_path):
+                    df = pd.read_csv(csv_path)
+                    wandb_table = wandb.Table(dataframe=df)
+                    wandb.log({"Top Predictions": wandb_table})
+            except Exception as e:
+                print(f"Could not create wandb table: {e}")
     except (ImportError, Exception) as e:
         print(f"Could not log to Weights & Biases: {e}")
     
