@@ -144,3 +144,6 @@ def get_auto_config() -> ProjectConfig:
     else:
         # Single GPU environment
         return get_single_gpu_config()
+
+# Set tokenizers parallelism to avoid deadlocks with multiprocessing
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
