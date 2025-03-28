@@ -113,6 +113,9 @@ def parse_args():
     parser.add_argument(
         "--group_name", type=str, default=None, help="Group name for wandb"
     )
+    parser.add_argument(
+        "--wandb_entity", type=str, default=None, help="Entity/organization for wandb"
+    )
 
     return parser.parse_args()
 
@@ -191,6 +194,7 @@ def update_config_from_args(config, args):
             project_name=args.project_name or "clip_har",
             group_name=args.group_name,
             experiment_name=args.experiment_name,
+            entity=args.wandb_entity,
         )
 
     # Set mlflow config if applicable
