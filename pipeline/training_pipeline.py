@@ -72,7 +72,7 @@ from training.trainer import (
     get_trainer,
 )
 from utils.config import Config
-from utils.distributed import get_rank, get_world_size, is_main_process
+from utils.distributed import get_rank, get_world_size, get_local_rank, is_main_process
 from utils.mlflow import (
     log_artifact,
     log_metrics,
@@ -152,13 +152,19 @@ class TrainingPipeline:
         self.tracker = None
 
         if self.is_main_process and (use_mlflow or use_wandb):
+            # Explicitly set MLflow tracking URI to port 5001 
+            if hasattr(self.config, "mlflow"):
+                # Override the tracking URI to use port 5001
+                self.config.mlflow.tracking_uri = "http://localhost:5001"
+                print(f"MLflow tracking URI explicitly set to: {self.config.mlflow.tracking_uri}")
+            
             self.tracker = create_tracker(
                 use_mlflow=use_mlflow,
                 use_wandb=use_wandb,
                 experiment_name=self.experiment_name,
                 mlflow_tracking_uri=self.config.mlflow.tracking_uri
                 if hasattr(self.config, "mlflow")
-                else None,
+                else "http://localhost:5001",  # Fallback to port 5001
                 mlflow_artifacts_dir=self.config.mlflow.artifacts_dir
                 if hasattr(self.config, "mlflow")
                 else "./mlruns",
@@ -378,12 +384,39 @@ class TrainingPipeline:
 
     def train(self) -> Dict[str, Any]:
         """
-        Train the model on the prepared dataset.
+        Train the model using trainer.
 
         Returns:
             Dictionary with training results
         """
         logger.info("Starting training...")
+
+        # Print training configuration for debugging
+        logger.info(f"Distributed mode: {self.config.training.distributed_mode}")
+        logger.info(f"World size: {self.world_size}")
+        logger.info(f"Rank: {self.rank}")
+        logger.info(f"Local rank: {get_local_rank()}")
+        logger.info(f"Training config: {self.training_config}")
+
+        # Test MLflow logging
+        if self.is_main_process and self.tracker:
+            try:
+                # Log a test metric to verify MLflow connection
+                self.tracker.log_metrics({"test_metric": 1.0}, step=0)
+                logger.info("✅ Successfully logged test metric to experiment tracker")
+            except Exception as e:
+                logger.error(f"❌ Error logging test metric to experiment tracker: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Create trainer with distributed config
+        distributed_config = DistributedConfig(
+            mode=DistributedMode[self.config.training.distributed_mode.upper()],
+            world_size=self.world_size,
+            rank=self.rank,
+            local_rank=get_local_rank(),
+            mixed_precision=self.training_config.mixed_precision,
+        )
 
         # Ensure we have a model
         if self.model is None:
@@ -403,7 +436,6 @@ class TrainingPipeline:
             batch_size=self.config.training.batch_size,
             eval_batch_size=self.config.training.eval_batch_size,
             num_workers=self.config.training.num_workers,
-            mixed_precision=self.config.training.mixed_precision,
             distributed_mode=self.config.training.distributed_mode,
         )
 
