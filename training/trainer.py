@@ -43,6 +43,16 @@ from training.distributed import (
 )
 from utils.distributed import get_rank, get_world_size
 
+# Add the parent directory to sys.path to import custom_evaluate
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from custom_evaluate import visualize_grid_predictions
+except ImportError:
+    # Define fallback functions if import fails
+    def visualize_grid_predictions(*args, **kwargs):
+        print("Warning: visualize_grid_predictions not available")
+        return None
+
 
 @dataclass
 class TrainingConfig:
@@ -440,6 +450,10 @@ class DistributedTrainer:
         # Run evaluation
         metrics = self.evaluate()
 
+        # Create visualizations (only on main process and every 5 epochs)
+        if is_main_process(self.distributed_config) and self.cur_epoch % 5 == 0:
+            self.create_validation_visualizations()
+
         # Log metrics
         if metrics is not None and is_main_process(self.distributed_config):
             history_obj = {}
@@ -456,6 +470,72 @@ class DistributedTrainer:
             )
 
         return metrics
+
+    @torch.no_grad()
+    def create_validation_visualizations(self, num_samples=10, top_k=5):
+        """Create visualizations of model predictions on validation data."""
+        if not hasattr(self, 'val_dataset') or self.val_dataset is None:
+            print("Warning: No validation dataset available for visualization")
+            return
+            
+        # Get references to model and device
+        model = self.model
+        device = next(model.parameters()).device
+        
+        # Create visualizations directory
+        output_dir = os.path.join(self.config.output_dir, f"val_viz_epoch_{self.cur_epoch}")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Get class names if they exist
+        class_names = None
+        if hasattr(self, 'labels'):
+            class_names = self.labels
+        elif hasattr(model, 'labels'):
+            class_names = model.labels
+        else:
+            # Try to infer class count from model output size
+            # This is a fallback and may not be correct for all models
+            dummy_batch = next(iter(self.val_dataloader))
+            dummy_batch = self.move_to_device(dummy_batch)
+            with torch.no_grad():
+                if isinstance(dummy_batch, dict):
+                    output = model(**dummy_batch)
+                elif isinstance(dummy_batch, list):
+                    output = model(*dummy_batch)
+                else:
+                    output = model(dummy_batch)
+                
+                if isinstance(output, torch.Tensor) and output.dim() > 1:
+                    num_classes = output.shape[1]
+                    class_names = [f"Class {i}" for i in range(num_classes)]
+                else:
+                    print("Warning: Could not determine class names for visualization")
+                    return
+        
+        # Generate grid visualization
+        try:
+            grid_path = visualize_grid_predictions(
+                model,
+                self.val_dataset,
+                class_names,
+                output_dir,
+                num_samples=num_samples,
+                top_k=top_k,
+                device=device
+            )
+            
+            # Log to trackers if available
+            if hasattr(self, 'logger') and self.logger:
+                try:
+                    self.logger.log_artifact(grid_path)
+                except Exception as e:
+                    print(f"Warning: Could not log visualization to tracker: {e}")
+                    
+            print(f"Saved validation visualizations to {output_dir}")
+        except Exception as e:
+            print(f"Error creating validation visualizations: {e}")
+            import traceback
+            traceback.print_exc()
 
     @torch.no_grad()
     def evaluate(self) -> Dict[str, float]:
