@@ -253,6 +253,9 @@ python train.py --no_mlflow --use_wandb --experiment_name "clip_har_experiment"
 
 # Disable all tracking
 python train.py --no_tracking
+
+# Specify custom MLflow port
+python train.py --experiment_name "clip_har_experiment" --mlflow_port 5001
 ```
 
 ### Setting up MLflow Server (Self-hosted)
@@ -276,6 +279,11 @@ If you encounter issues with the MLflow server:
    ```bash
    mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --host 0.0.0.0 --port 5001
    ```
+   
+   When using a custom port for the MLflow server, make sure to specify the same port in your training script:
+   ```bash
+   python train.py --use_mlflow --experiment_name "my_experiment" --mlflow_port 5001
+   ```
 
 2. **Server running but dashboard empty**: Make sure your training explicitly enables MLflow:
    ```bash
@@ -296,7 +304,10 @@ If you encounter issues with the MLflow server:
    ```bash
    ssh -L 5000:localhost:5000 username@remote_server
    ```
-   Then open http://localhost:5000 in your local browser.
+   Then open http://localhost:5000 in your local browser. For a different port, adjust the command accordingly:
+   ```bash
+   ssh -L 5001:localhost:5001 username@remote_server
+   ```
 
 ### Setting up Weights & Biases (Cloud)
 
