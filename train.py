@@ -232,6 +232,7 @@ def main():
         use_mlflow=config.tracking.use_mlflow,
         use_wandb=config.tracking.use_wandb,
         experiment_name=args.experiment_name,
+        config=config,  # Pass the full config to the pipeline
     )
 
     # Run the pipeline
