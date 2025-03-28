@@ -116,6 +116,9 @@ def parse_args():
     parser.add_argument(
         "--wandb_entity", type=str, default=None, help="Entity/organization for wandb"
     )
+    parser.add_argument(
+        "--mlflow_port", type=int, default=5000, help="Port for MLflow tracking server"
+    )
 
     return parser.parse_args()
 
@@ -201,14 +204,19 @@ def update_config_from_args(config, args):
     if hasattr(config, "mlflow"):
         if args.experiment_name:
             config.mlflow.experiment_name = args.experiment_name
+        if args.mlflow_port:
+            config.mlflow.port = args.mlflow_port
+            # Update tracking URI with port
+            config.mlflow.tracking_uri = f"http://localhost:{args.mlflow_port}"
     else:
         # Create mlflow config if not exists
         from types import SimpleNamespace
 
         config.mlflow = SimpleNamespace(
             experiment_name=args.experiment_name or "clip_har",
-            tracking_uri=None,
+            tracking_uri=f"http://localhost:{args.mlflow_port}",
             artifacts_dir="./mlruns",
+            port=args.mlflow_port,
         )
 
     return config

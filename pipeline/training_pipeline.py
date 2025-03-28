@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import torch
 import torch.distributed as dist
+import mlflow
 
 # Import project modules
 from configs.default import get_config
@@ -152,11 +153,13 @@ class TrainingPipeline:
         self.tracker = None
 
         if self.is_main_process and (use_mlflow or use_wandb):
-            # Explicitly set MLflow tracking URI to port 5001 
-            if hasattr(self.config, "mlflow"):
-                # Override the tracking URI to use port 5001
-                self.config.mlflow.tracking_uri = "http://localhost:5001"
-                print(f"MLflow tracking URI explicitly set to: {self.config.mlflow.tracking_uri}")
+            # Configure MLflow tracking if needed
+            if mlflow.get_tracking_uri() is None:
+                # Use port from config or default to 5000
+                port = getattr(self.config.mlflow, "port", 5000)
+                tracking_uri = getattr(self.config.mlflow, "tracking_uri", f"http://localhost:{port}")
+                logger.info(f"Setting MLflow tracking URI to {tracking_uri}")
+                mlflow.set_tracking_uri(tracking_uri)
             
             self.tracker = create_tracker(
                 use_mlflow=use_mlflow,
