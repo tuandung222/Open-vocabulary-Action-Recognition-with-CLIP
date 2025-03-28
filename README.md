@@ -259,14 +259,44 @@ python train.py --no_tracking
 
 ```bash
 # Start MLflow tracking server
-mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
+mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --host 0.0.0.0
 ```
 
-The MLflow UI (http://localhost:5000) provides:
+The MLflow UI will be accessible at http://localhost:5000 and provides:
 - Experiment comparison
 - Metric visualization
 - Model versioning
 - Artifact management
+
+#### Troubleshooting MLflow Server
+
+If you encounter issues with the MLflow server:
+
+1. **Address already in use error**: If port 5000 is already taken, use a different port:
+   ```bash
+   mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --host 0.0.0.0 --port 5001
+   ```
+
+2. **Server running but dashboard empty**: Make sure your training explicitly enables MLflow:
+   ```bash
+   python train.py --use_mlflow --experiment_name "my_experiment"
+   ```
+
+3. **Check if MLflow server is already running**:
+   ```bash
+   ps aux | grep mlflow
+   ```
+
+4. **Restart a stuck server**:
+   ```bash
+   pkill -f "mlflow server"
+   ```
+
+5. **Remote access**: For accessing MLflow UI from a remote machine, use SSH tunneling:
+   ```bash
+   ssh -L 5000:localhost:5000 username@remote_server
+   ```
+   Then open http://localhost:5000 in your local browser.
 
 ### Setting up Weights & Biases (Cloud)
 
